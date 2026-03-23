@@ -12,7 +12,13 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Allow FH to scan forms with camera.",
+        "NSPhotoLibraryUsageDescription": "Allow FH to pick form images from your photo library.",
+        "NSMicrophoneUsageDescription": "Allow FH to use microphone for voice input.",
+        "NSSpeechRecognitionUsageDescription": "Allow FH to use speech recognition for form help."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +27,38 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.FH"
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow FH to access camera for scanning forms."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FH to access photos to import forms."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Allow FH to use microphone for voice input.",
+          "speechRecognitionPermission": "Allow FH to use speech recognition for form help."
+        }
+      ]
+    ]
   }
 }

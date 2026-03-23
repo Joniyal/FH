@@ -1,0 +1,409 @@
+> Task :expo-gradle-plugin:expo-autolinking-settings-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle-plugin:settings-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle-plugin:shared:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-gradle-plugin:expo-autolinking-settings-plugin:pluginDescriptors UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:pluginDescriptors UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:processResources UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-settings-plugin:processResources UP-TO-DATE
+> Task :gradle-plugin:shared:compileKotlin UP-TO-DATE
+> Task :gradle-plugin:shared:compileJava NO-SOURCE
+> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:compileKotlin UP-TO-DATE
+> Task :gradle-plugin:shared:processResources NO-SOURCE
+> Task :gradle-plugin:shared:classes UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:compileJava NO-SOURCE
+> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:processResources NO-SOURCE
+> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:classes UP-TO-DATE
+> Task :gradle-plugin:shared:jar UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin-shared:jar UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:compileKotlin UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:compileJava NO-SOURCE
+> Task :gradle-plugin:settings-plugin:classes UP-TO-DATE
+> Task :gradle-plugin:settings-plugin:jar UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-settings-plugin:compileKotlin UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-settings-plugin:compileJava NO-SOURCE
+> Task :expo-gradle-plugin:expo-autolinking-settings-plugin:classes UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-settings-plugin:jar UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-gradle-plugin:expo-max-sdk-override-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :gradle-plugin:react-native-gradle-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-module-gradle-plugin:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-module-gradle-plugin:pluginDescriptors UP-TO-DATE
+> Task :expo-module-gradle-plugin:processResources UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin:compileKotlin UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin:compileJava NO-SOURCE
+> Task :expo-gradle-plugin:expo-max-sdk-override-plugin:compileKotlin UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin:pluginDescriptors UP-TO-DATE
+> Task :expo-gradle-plugin:expo-max-sdk-override-plugin:compileJava NO-SOURCE
+> Task :expo-gradle-plugin:expo-max-sdk-override-plugin:pluginDescriptors UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin:processResources UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin:classes UP-TO-DATE
+> Task :expo-gradle-plugin:expo-max-sdk-override-plugin:processResources UP-TO-DATE
+> Task :expo-gradle-plugin:expo-max-sdk-override-plugin:classes UP-TO-DATE
+> Task :expo-gradle-plugin:expo-autolinking-plugin:jar UP-TO-DATE
+> Task :expo-gradle-plugin:expo-max-sdk-override-plugin:jar UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:compileKotlin UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:compileJava NO-SOURCE
+> Task :gradle-plugin:react-native-gradle-plugin:pluginDescriptors UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:processResources UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:classes UP-TO-DATE
+> Task :gradle-plugin:react-native-gradle-plugin:jar UP-TO-DATE
+> Task :expo-module-gradle-plugin:compileKotlin UP-TO-DATE
+> Task :expo-module-gradle-plugin:compileJava NO-SOURCE
+> Task :expo-module-gradle-plugin:classes UP-TO-DATE
+> Task :expo-module-gradle-plugin:jar UP-TO-DATE
+
+> Configure project :
+[32m[ExpoRootProject][0m Using the following versions:
+  - buildTools:  [32m36.0.0[0m
+  - minSdk:      [32m24[0m
+  - compileSdk:  [32m36[0m
+  - targetSdk:   [32m36[0m
+  - ndk:         [32m27.1.12297006[0m
+  - kotlin:      [32m2.1.20[0m
+  - ksp:         [32m2.1.20-2.0.1[0m
+
+> Configure project :app
+ ℹ️  [33mApplying gradle plugin[0m '[32mexpo-max-sdk-override-plugin[0m'
+  [expo-max-sdk-override-plugin] This plugin will find all permissions declared with `android:maxSdkVersion`. If there exists a declaration with the `android:maxSdkVersion` annotation and another one without, the plugin will remove the annotation from the final merged manifest. In order to see a log with the changes run a clean build of the app.
+
+> Configure project :expo
+
+Using expo modules
+  - [32mexpo-log-box[0m (55.0.7)
+  - [32mexpo-constants[0m (55.0.9)
+  - [32mexpo-modules-core[0m (55.0.17)
+  - [32mexpo-speech-recognition[0m (0.1.0)
+  - [33m[📦][0m [32mexpo-dom-webview[0m (55.0.3)
+  - [33m[📦][0m [32mexpo-asset[0m (55.0.10)
+  - [33m[📦][0m [32mexpo-camera[0m (55.0.10)
+  - [33m[📦][0m [32mexpo-file-system[0m (55.0.11)
+  - [33m[📦][0m [32mexpo-font[0m (55.0.4)
+  - [33m[📦][0m [32mexpo-image-loader[0m (55.0.0)
+  - [33m[📦][0m [32mexpo-image-picker[0m (55.0.13)
+  - [33m[📦][0m [32mexpo-keep-awake[0m (55.0.4)
+  - [33m[📦][0m [32mexpo-speech[0m (55.0.9)
+
+Checking the license for package Android SDK Build-Tools 35 in C:\Users\HP\AppData\Local\Android\Sdk\licenses
+License for package Android SDK Build-Tools 35 accepted.
+Preparing "Install Android SDK Build-Tools 35 v.35.0.0".
+"Install Android SDK Build-Tools 35 v.35.0.0" ready.
+Installing Android SDK Build-Tools 35 in C:\Users\HP\AppData\Local\Android\Sdk\build-tools\35.0.0
+"Install Android SDK Build-Tools 35 v.35.0.0" complete.
+"Install Android SDK Build-Tools 35 v.35.0.0" finished.
+[=========                              ] 25%                                   
+> Task :expo-log-box:preBuild UP-TO-DATE
+> Task :expo-speech-recognition:preBuild UP-TO-DATE
+> Task :expo-modules-core:preBuild UP-TO-DATE
+> Task :expo-speech-recognition:preReleaseBuild UP-TO-DATE
+> Task :expo-log-box:preReleaseBuild UP-TO-DATE
+> Task :expo-modules-core:preReleaseBuild UP-TO-DATE
+> Task :expo:generatePackagesList
+> Task :expo:preBuild
+> Task :expo:preReleaseBuild
+> Task :app:generateAutolinkingNewArchitectureFiles
+> Task :app:generateAutolinkingPackageList
+> Task :app:generateCodegenSchemaFromJavaScript SKIPPED
+> Task :app:generateCodegenArtifactsFromSchema SKIPPED
+> Task :app:generateReactNativeEntryPoint
+> Task :expo:mergeReleaseJniLibFolders
+> Task :expo-speech-recognition:mergeReleaseJniLibFolders
+> Task :expo:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-speech-recognition:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-log-box:mergeReleaseJniLibFolders
+> Task :expo-log-box:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-speech-recognition:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-log-box:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo:copyReleaseJniLibsProjectOnly
+> Task :expo-log-box:copyReleaseJniLibsProjectOnly
+> Task :expo-speech-recognition:copyReleaseJniLibsProjectOnly
+> Task :expo:generateReleaseBuildConfig
+> Task :expo-speech-recognition:generateReleaseBuildConfig
+> Task :expo-log-box:generateReleaseBuildConfig
+> Task :expo-speech-recognition:generateReleaseResValues
+> Task :expo-log-box:generateReleaseResValues
+> Task :expo:generateReleaseResValues
+> Task :app:buildKotlinToolingMetadata
+> Task :app:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-log-box:generateReleaseResources
+> Task :expo:generateReleaseResources
+> Task :expo-speech-recognition:generateReleaseResources
+> Task :expo:packageReleaseResources
+> Task :expo-log-box:packageReleaseResources
+> Task :expo-speech-recognition:packageReleaseResources
+
+> Task :expo-constants:createExpoConfig
+The NODE_ENV environment variable is required but was not specified. Ensure the project is bundled with Expo CLI or NODE_ENV is set. Using only .env.local and .env
+
+> Task :expo-constants:preBuild
+> Task :expo-constants:preReleaseBuild
+> Task :expo-constants:mergeReleaseJniLibFolders
+> Task :expo-constants:mergeReleaseNativeLibs NO-SOURCE
+> Task :expo-constants:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :expo-constants:generateReleaseBuildConfig
+> Task :react-native-safe-area-context:generateCodegenSchemaFromJavaScript
+> Task :expo-constants:generateReleaseResValues
+> Task :expo-constants:generateReleaseResources
+> Task :react-native-async-storage_async-storage:generateCodegenSchemaFromJavaScript
+> Task :expo-constants:packageReleaseResources
+
+> Task :expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a]
+Checking the license for package CMake 3.22.1 in C:\Users\HP\AppData\Local\Android\Sdk\licenses
+License for package CMake 3.22.1 accepted.
+Preparing "Install CMake 3.22.1 v.3.22.1".
+
+> Task :expo-constants:copyReleaseJniLibsProjectOnly
+> Task :expo:javaPreCompileRelease
+> Task :expo-log-box:javaPreCompileRelease
+> Task :expo-constants:javaPreCompileRelease
+> Task :expo-speech-recognition:javaPreCompileRelease
+> Task :expo-log-box:writeReleaseAarMetadata
+> Task :expo:writeReleaseAarMetadata
+> Task :expo-constants:writeReleaseAarMetadata
+> Task :expo:extractDeepLinksRelease
+> Task :expo-speech-recognition:writeReleaseAarMetadata
+> Task :expo-log-box:extractDeepLinksRelease
+> Task :expo:parseReleaseLocalResources
+> Task :expo-log-box:parseReleaseLocalResources
+> Task :expo-speech-recognition:parseReleaseLocalResources
+> Task :expo-constants:parseReleaseLocalResources
+> Task :expo-speech-recognition:extractDeepLinksRelease
+> Task :expo-constants:extractDeepLinksRelease
+> Task :expo-log-box:generateReleaseRFile
+> Task :expo-constants:generateReleaseRFile
+> Task :expo:generateReleaseRFile
+> Task :react-native-screens:generateCodegenSchemaFromJavaScript
+> Task :expo-speech-recognition:generateReleaseRFile
+> Task :expo:processReleaseManifest
+> Task :expo-speech-recognition:processReleaseManifest
+> Task :expo-log-box:processReleaseManifest
+> Task :expo-constants:processReleaseManifest
+> Task :react-native-async-storage_async-storage:generateCodegenArtifactsFromSchema
+> Task :react-native-async-storage_async-storage:preBuild
+> Task :react-native-async-storage_async-storage:preReleaseBuild
+> Task :react-native-async-storage_async-storage:mergeReleaseJniLibFolders
+> Task :react-native-async-storage_async-storage:mergeReleaseNativeLibs NO-SOURCE
+> Task :react-native-async-storage_async-storage:copyReleaseJniLibsProjectOnly
+> Task :react-native-safe-area-context:generateCodegenArtifactsFromSchema
+> Task :react-native-safe-area-context:preBuild
+> Task :react-native-safe-area-context:preReleaseBuild
+> Task :react-native-async-storage_async-storage:generateReleaseBuildConfig
+> Task :react-native-safe-area-context:mergeReleaseJniLibFolders
+> Task :react-native-async-storage_async-storage:generateReleaseResValues
+> Task :react-native-safe-area-context:mergeReleaseNativeLibs NO-SOURCE
+> Task :react-native-safe-area-context:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :react-native-safe-area-context:copyReleaseJniLibsProjectOnly
+> Task :react-native-async-storage_async-storage:generateReleaseResources
+> Task :react-native-safe-area-context:generateReleaseBuildConfig
+> Task :react-native-safe-area-context:generateReleaseResValues
+> Task :react-native-safe-area-context:generateReleaseResources
+> Task :react-native-async-storage_async-storage:packageReleaseResources
+> Task :react-native-safe-area-context:packageReleaseResources
+> Task :react-native-async-storage_async-storage:javaPreCompileRelease
+> Task :react-native-async-storage_async-storage:parseReleaseLocalResources
+> Task :react-native-safe-area-context:javaPreCompileRelease
+> Task :react-native-async-storage_async-storage:writeReleaseAarMetadata
+> Task :react-native-safe-area-context:parseReleaseLocalResources
+> Task :react-native-safe-area-context:writeReleaseAarMetadata
+> Task :react-native-async-storage_async-storage:extractDeepLinksRelease
+> Task :react-native-safe-area-context:extractDeepLinksRelease
+> Task :react-native-async-storage_async-storage:generateReleaseRFile
+> Task :react-native-safe-area-context:generateReleaseRFile
+
+> Task :react-native-safe-area-context:processReleaseManifest
+package="com.th3rdwave.safeareacontext" found in source AndroidManifest.xml: F:\gitpro\FH\node_modules\react-native-safe-area-context\android\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.th3rdwave.safeareacontext" from the source AndroidManifest.xml: F:\gitpro\FH\node_modules\react-native-safe-area-context\android\src\main\AndroidManifest.xml.
+
+> Task :react-native-async-storage_async-storage:processReleaseManifest
+package="com.reactnativecommunity.asyncstorage" found in source AndroidManifest.xml: F:\gitpro\FH\node_modules\@react-native-async-storage\async-storage\android\src\main\AndroidManifest.xml.
+Setting the namespace via the package attribute in the source AndroidManifest.xml is no longer supported, and the value is ignored.
+Recommendation: remove package="com.reactnativecommunity.asyncstorage" from the source AndroidManifest.xml: F:\gitpro\FH\node_modules\@react-native-async-storage\async-storage\android\src\main\AndroidManifest.xml.
+
+> Task :react-native-screens:generateCodegenArtifactsFromSchema
+> Task :react-native-screens:preBuild
+> Task :react-native-screens:preReleaseBuild
+
+> Task :app:createBundleReleaseJsAndAssets
+Starting Metro Bundler
+
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+
+> Task :expo:prepareReleaseArtProfile
+> Task :expo-constants:prepareReleaseArtProfile
+> Task :expo:compileReleaseLibraryResources
+> Task :expo-log-box:compileReleaseLibraryResources
+> Task :expo-speech-recognition:compileReleaseLibraryResources
+> Task :react-native-async-storage_async-storage:compileReleaseLibraryResources
+> Task :expo-constants:compileReleaseLibraryResources
+> Task :react-native-safe-area-context:compileReleaseLibraryResources
+> Task :expo-speech-recognition:prepareReleaseArtProfile
+> Task :expo:mergeReleaseShaders
+> Task :expo-constants:mergeReleaseShaders
+> Task :expo:compileReleaseShaders NO-SOURCE
+> Task :expo-constants:compileReleaseShaders NO-SOURCE
+> Task :expo-log-box:prepareReleaseArtProfile
+> Task :expo:generateReleaseAssets UP-TO-DATE
+> Task :expo-constants:generateReleaseAssets UP-TO-DATE
+> Task :expo-speech-recognition:mergeReleaseShaders
+> Task :expo-log-box:mergeReleaseShaders
+> Task :expo:mergeReleaseAssets
+> Task :expo-log-box:compileReleaseShaders NO-SOURCE
+> Task :expo-log-box:generateReleaseAssets UP-TO-DATE
+> Task :expo-speech-recognition:compileReleaseShaders NO-SOURCE
+> Task :expo-speech-recognition:generateReleaseAssets UP-TO-DATE
+> Task :expo-speech-recognition:mergeReleaseAssets
+> Task :expo-constants:mergeReleaseAssets
+> Task :expo-speech-recognition:extractProguardFiles
+> Task :expo-constants:extractProguardFiles
+> Task :expo:extractProguardFiles
+> Task :expo-log-box:mergeReleaseAssets
+> Task :expo-log-box:extractProguardFiles
+> Task :expo-speech-recognition:prepareLintJarForPublish
+> Task :expo:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-log-box:prepareLintJarForPublish
+> Task :expo:extractDeepLinksForAarRelease
+> Task :expo-log-box:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-log-box:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-log-box:extractDeepLinksForAarRelease
+> Task :expo-speech-recognition:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-speech-recognition:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-speech-recognition:extractDeepLinksForAarRelease
+> Task :expo-constants:stripReleaseDebugSymbols NO-SOURCE
+> Task :expo-constants:prepareLintJarForPublish
+> Task :expo-constants:extractDeepLinksForAarRelease
+> Task :expo:copyReleaseJniLibsProjectAndLocalJars
+> Task :expo-log-box:writeReleaseLintModelMetadata
+> Task :expo-speech-recognition:writeReleaseLintModelMetadata
+> Task :expo:writeReleaseLintModelMetadata
+
+> Task :app:createBundleReleaseJsAndAssets
+Android .\index.ts ▓▓░░░░░░░░░░░░░░ 17.0% ( 15/124)
+
+> Task :expo-constants:writeReleaseLintModelMetadata
+> Task :expo-constants:mapReleaseSourceSetPaths
+> Task :expo-constants:mergeReleaseResources
+> Task :expo:prepareLintJarForPublish
+
+> Task :app:createBundleReleaseJsAndAssets
+Android .\index.ts ▓▓░░░░░░░░░░░░░░ 17.0% ( 61/216)
+Android .\index.ts ▓▓▓▓▓░░░░░░░░░░░ 36.7% (267/441)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 64.6% (495/641)
+
+> Task :expo-constants:verifyReleaseResources
+
+> Task :app:createBundleReleaseJsAndAssets
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓░░░░ 77.1% (640/729)
+
+> Task :expo-constants:copyReleaseJniLibsProjectAndLocalJars
+
+> Task :app:createBundleReleaseJsAndAssets
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.7% (832/852)
+Android Bundled 24375ms index.ts (865 modules)
+Writing bundle output to: android\app\build\generated\assets\react\release\index.android.bundle
+Writing sourcemap output to: android\app\build\intermediates\sourcemaps\react\release\index.android.bundle.packager.map
+Copying 19 asset files
+Done writing bundle output
+Done writing sourcemap output
+
+> Task :react-native-screens:configureCMakeRelWithDebInfo[arm64-v8a]
+> Task :react-native-async-storage_async-storage:compileReleaseJavaWithJavac
+> Task :react-native-safe-area-context:compileReleaseKotlin
+
+> Task :expo-modules-core:configureCMakeRelWithDebInfo[arm64-v8a]
+"Install CMake 3.22.1 v.3.22.1" ready.
+Installing CMake 3.22.1 in C:\Users\HP\AppData\Local\Android\Sdk\cmake\3.22.1
+"Install CMake 3.22.1 v.3.22.1" complete.
+"Install CMake 3.22.1 v.3.22.1" finished.
+
+> Task :app:preBuild
+> Task :app:preReleaseBuild
+> Task :expo-log-box:mapReleaseSourceSetPaths
+> Task :app:configureCMakeRelWithDebInfo[arm64-v8a]
+> Task :react-native-safe-area-context:prepareReleaseArtProfile
+> Task :react-native-safe-area-context:mergeReleaseShaders
+> Task :react-native-safe-area-context:compileReleaseShaders NO-SOURCE
+> Task :react-native-safe-area-context:generateReleaseAssets UP-TO-DATE
+> Task :react-native-safe-area-context:mergeReleaseAssets
+> Task :react-native-safe-area-context:extractProguardFiles
+> Task :react-native-safe-area-context:prepareLintJarForPublish
+> Task :react-native-safe-area-context:stripReleaseDebugSymbols NO-SOURCE
+> Task :react-native-safe-area-context:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-safe-area-context:extractDeepLinksForAarRelease
+> Task :react-native-safe-area-context:writeReleaseLintModelMetadata
+
+> Task :react-native-async-storage_async-storage:compileReleaseJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: F:\gitpro\FH\node_modules\@react-native-async-storage\async-storage\android\src\javaPackage\java\com\reactnativecommunity\asyncstorage\AsyncStoragePackage.java uses unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :react-native-async-storage_async-storage:prepareReleaseArtProfile
+> Task :react-native-async-storage_async-storage:mergeReleaseShaders
+> Task :react-native-async-storage_async-storage:compileReleaseShaders NO-SOURCE
+> Task :react-native-async-storage_async-storage:generateReleaseAssets UP-TO-DATE
+> Task :react-native-async-storage_async-storage:mergeReleaseAssets
+> Task :react-native-async-storage_async-storage:processReleaseJavaRes NO-SOURCE
+> Task :react-native-async-storage_async-storage:bundleLibRuntimeToJarRelease
+> Task :react-native-async-storage_async-storage:bundleLibCompileToJarRelease
+> Task :react-native-async-storage_async-storage:bundleLibRuntimeToDirRelease
+> Task :react-native-async-storage_async-storage:extractProguardFiles
+> Task :react-native-async-storage_async-storage:createFullJarRelease
+> Task :react-native-safe-area-context:mapReleaseSourceSetPaths
+> Task :react-native-async-storage_async-storage:generateReleaseLintModel
+
+> Task :react-native-safe-area-context:compileReleaseKotlin
+w: file:///F:/gitpro/FH/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaView.kt:9:8 'class UIManagerModule : ReactContextBaseJavaModule, OnBatchCompleteListener, LifecycleEventListener, UIManager' is deprecated. Deprecated in Java.
+w: file:///F:/gitpro/FH/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaView.kt:50:54 'class UIManagerModule : ReactContextBaseJavaModule, OnBatchCompleteListener, LifecycleEventListener, UIManager' is deprecated. Deprecated in Java.
+w: file:///F:/gitpro/FH/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaView.kt:59:23 'val uiImplementation: UIImplementation!' is deprecated. Deprecated in Java.
+w: file:///F:/gitpro/FH/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewShadowNode.kt:9:32 'class LayoutShadowNode : ReactShadowNodeImpl' is deprecated. Deprecated in Java.
+w: file:///F:/gitpro/FH/node_modules/react-native-safe-area-context/android/src/main/java/com/th3rdwave/safeareacontext/SafeAreaViewShadowNode.kt:110:61 'class NativeViewHierarchyOptimizer : Any' is deprecated. Deprecated in Java.
+
+> Task :react-native-async-storage_async-storage:prepareLintJarForPublish
+> Task :react-native-async-storage_async-storage:stripReleaseDebugSymbols NO-SOURCE
+> Task :react-native-async-storage_async-storage:copyReleaseJniLibsProjectAndLocalJars
+> Task :react-native-async-storage_async-storage:extractDeepLinksForAarRelease
+> Task :expo-log-box:mergeReleaseResources
+> Task :react-native-safe-area-context:compileReleaseJavaWithJavac
+> Task :react-native-async-storage_async-storage:extractReleaseAnnotations
+> Task :expo-log-box:verifyReleaseResources
+> Task :react-native-safe-area-context:processReleaseJavaRes
+> Task :react-native-safe-area-context:bundleLibRuntimeToJarRelease
+> Task :react-native-safe-area-context:bundleLibRuntimeToDirRelease
+> Task :react-native-safe-area-context:generateReleaseLintModel
+> Task :react-native-safe-area-context:createFullJarRelease
+> Task :react-native-safe-area-context:bundleLibCompileToJarRelease
+> Task :expo-modules-core:buildCMakeRelWithDebInfo[arm64-v8a]
+> Task :react-native-screens:buildCMakeRelWithDebInfo[arm64-v8a]
+> Task :react-native-safe-area-context:extractReleaseAnnotations
+> Task :app:buildCMakeRelWithDebInfo[arm64-v8a]
+> Task :react-native-safe-area-context:mergeReleaseGeneratedProguardFiles
+> Task :react-native-safe-area-context:mergeReleaseConsumerProguardFiles
+> Task :react-native-safe-area-context:generateReleaseLintVitalModel
+> Task :react-native-async-storage_async-storage:mergeReleaseGeneratedProguardFiles
+> Task :react-native-async-storage_async-storage:mergeReleaseConsumerProguardFiles
+> Task :react-native-async-storage_async-storage:mergeReleaseJavaResource
+> Task :react-native-safe-area-context:mergeReleaseJavaResource
+> Task :react-native-async-storage_async-storage:syncReleaseLibJars
+> Task :react-native-async-storage_async-storage:bundleReleaseLocalLintAar
+> Task :react-native-async-storage_async-storage:writeReleaseLintModelMetadata
+> Task :react-native-async-storage_async-storage:generateReleaseLintVitalModel
+> Task :react-native-async-storage_async-storage:bundleReleaseAar
+> Task :react-native-async-storage_async-storage:mapReleaseSourceSetPaths
+
+> Task :react-native-screens:buildCMakeRelWithDebInfo[arm64-v8a]
+C/C++: Hard link from 'C:\Users\HP\.gradle\caches\8.13\transforms\03576fc970fdb9765706ec8965f85b8c\transformed\react-android-0.83.2-release\prefab\modules\reactnative\libs\android.arm64-v8a\libreactnative.so' to 'F:\gitpro\FH\node_modules\react-native-screens\android\build\intermediates\cxx\RelWithDebInfo\6l4p3268\obj\arm64-v8a\libreactnative.so' failed. Doing a slower copy instead.
+C/C++: Hard link from 'C:\Users\HP\.gradle\caches\8.13\transforms\03576fc970fdb9765706ec8965f85b8c\transformed\react-android-0.83.2-release\prefab\modules\reactnative\libs\android.arm64-v8a\libreactnative.so' to 'F:\gitpro\FH\node_modules\react-native-screens\android\build\intermediates\cxx\RelWithDebInfo\6l4p3268\obj\arm64-v8a\libreactnative.so' failed. Doing a slower copy instead.
+
+> Task :react-native-safe-area-context:lintVitalAnalyzeRelease
+> Task :react-native-safe-area-context:mergeReleaseResources
+> Task :react-native-async-storage_async-storage:lintVitalAnalyzeRelease
+> Task :react-native-async-storage_async-storage:mergeReleaseResources
+> Task :react-native-screens:configureCMakeRelWithDebInfo[armeabi-v7a]
+> Task :react-native-async-storage_async-storage:verifyReleaseResources
+
+> Task :expo-modules-core:buildCMakeRelWithDebInfo[arm64-v8a]
+C/C++: Hard link from 'C:\Users\HP\.gradle\caches\8.13\transforms\03576fc970fdb9765706ec8965f85b8c\transformed\react-android-0.83.2-release\prefab\modules\reactnative\libs\android.arm64-v8a\libreactnative.so' to 'F:\gitpro\FH\node_modules\expo-modules-core\android\build\intermediates\cxx\RelWithDebInfo\5s5a2o16\obj\arm64-v8a\libreactnative.so' failed. Doing a slower copy instead.
+C/C++: Hard link from 'C:\Users\HP\.gradle\caches\8.13\transforms\03576fc970fdb9765706ec8965f85b8c\transformed\react-android-0.83.2-release\prefab\modules\reactnative\libs\android.arm64-v8a\libreactnative.so' to 'F:\gitpro\FH\node_modules\expo-modules-core\android\build\intermediates\cxx\RelWithDebInfo\5s5a2o16\obj\arm64-v8a\libreactnative.so' failed. Doing a slower copy instead.
