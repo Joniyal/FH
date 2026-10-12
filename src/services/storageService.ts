@@ -18,12 +18,14 @@ export async function getPersonalVaultData(): Promise<PersonalVaultData> {
 
   try {
     const parsed = JSON.parse(raw) as Partial<PersonalVaultData>;
+    const readText = (value: unknown): string =>
+      typeof value === 'string' ? value : '';
 
     return {
-      name: parsed.name ?? '',
-      address: parsed.address ?? '',
-      phone: parsed.phone ?? '',
-      dob: parsed.dob ?? '',
+      name: readText(parsed.name),
+      address: readText(parsed.address),
+      phone: readText(parsed.phone),
+      dob: readText(parsed.dob),
     };
   } catch {
     return EMPTY_PERSONAL_VAULT;

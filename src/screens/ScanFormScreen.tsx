@@ -4,6 +4,7 @@ import {
   Image,
   Linking,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -12,16 +13,19 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ScanForm'>;
 
 export default function ScanFormScreen({ navigation }: Props) {
+  const { t } = useLanguage();
   const cameraRef = useRef<CameraView | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [selectedImageUri, setSelectedImageUri] = useState<string>('');
   const [showCamera, setShowCamera] = useState<boolean>(true);
   const [capturing, setCapturing] = useState<boolean>(false);
   const [screenError, setScreenError] = useState<string>('');
+  const [showSettingsButton, setShowSettingsButton] = useState<boolean>(false);
 
   // Ask for camera permission if not granted.
   const ensureCameraPermission = async (): Promise<boolean> => {
@@ -44,9 +48,11 @@ export default function ScanFormScreen({ navigation }: Props) {
       const granted = await ensureCameraPermission();
       if (!granted || !cameraRef.current) {
         if (cameraPermission && !cameraPermission.canAskAgain) {
-          setScreenError('ക്യാമറ അനുമതി Settingsൽ നിന്ന് അനുവദിക്കുക.');
+          setScreenError(t('scan.errorCameraSettings'));
+          setShowSettingsButton(true);
         } else {
-          setScreenError('ക്യാമറ അനുമതി നൽകിയിട്ടില്ല.');
+          setScreenError(t('scan.errorCameraDenied'));
+          setShowSettingsButton(false);
         }
         return;
       }
@@ -57,10 +63,10 @@ export default function ScanFormScreen({ navigation }: Props) {
         setSelectedImageUri(photo.uri);
         setShowCamera(false);
       } else {
-        setScreenError('ചിത്രം ലഭിച്ചില്ല. വീണ്ടും ശ്രമിക്കുക.');
+        setScreenError(t('scan.errorImageMissing'));
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'ചിത്രം എടുക്കുമ്പോൾ പിശക് സംഭവിച്ചു.';
+      const message = e instanceof Error ? e.message : t('scan.errorCapture');
       setScreenError(message);
     } finally {
       setCapturing(false);
@@ -71,12 +77,14 @@ export default function ScanFormScreen({ navigation }: Props) {
   const handlePickFromGallery = async () => {
     try {
       setScreenError('');
+      setShowSettingsButton(false);
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
         if (!permission.canAskAgain) {
-          setScreenError('ഗാലറി അനുമതി Settingsൽ നിന്ന് അനുവദിക്കുക.');
+          setScreenError(t('scan.errorGallerySettings'));
+          setShowSettingsButton(true);
         } else {
-          setScreenError('ഗാലറി അനുമതി നൽകിയിട്ടില്ല.');
+          setScreenError(t('scan.errorGalleryDenied'));
         }
         return;
       }
@@ -92,24 +100,27 @@ export default function ScanFormScreen({ navigation }: Props) {
         setShowCamera(false);
       }
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Gallery തുറക്കുമ്പോൾ പിശക് സംഭവിച്ചു.';
+      const message = e instanceof Error ? e.message : t('scan.errorGalleryOpen');
       setScreenError(message);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>📷 ഫോം സ്കാൻ ചെയ്യുക</Text>
-      <Text style={styles.subHeading}>ചിത്രം വ്യക്തമായി എടുക്കുക. എഴുത്ത് സമമായി കാണണം.</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.heading}>{t('scan.heading')}</Text>
+      <Text style={styles.subHeading}>{t('scan.subHeading')}</Text>
 
       {screenError ? (
         <View style={styles.errorBlock}>
           <Text style={styles.errorText}>{screenError}</Text>
 
-          {(screenError.includes('settingsൽ നിന്ന്') ||
-            screenError.toLowerCase().includes('settings')) && (
+          {showSettingsButton && (
             <Pressable style={styles.settingsButton} onPress={() => Linking.openSettings()}>
-              <Text style={styles.settingsButtonText}>Settings തുറക്കുക</Text>
+              <Text style={styles.settingsButtonText}>{t('scan.openSettings')}</Text>
             </Pressable>
           )}
         </View>
@@ -121,15 +132,15 @@ export default function ScanFormScreen({ navigation }: Props) {
           {cameraPermission === null ? (
             <View style={styles.centerBox}>
               <ActivityIndicator size="large" color="#2563EB" />
-              <Text style={styles.text}>അനുമതി പരിശോധിക്കുന്നു...</Text>
+              <Text style={styles.text}>{t('scan.checkingPermission')}</Text>
             </View>
           ) : cameraPermission?.granted ? (
             <CameraView ref={cameraRef} style={styles.camera} facing="back" />
           ) : (
             <View style={styles.centerBox}>
-              <Text style={styles.text}>ക്യാമറ അനുമതി ആവശ്യമാണ്.</Text>
+              <Text style={styles.text}>{t('scan.cameraPermissionRequired')}</Text>
               <Pressable style={styles.primaryButton} onPress={requestCameraPermission}>
-                <Text style={styles.primaryButtonText}>അനുമതി നൽകുക</Text>
+                <Text style={styles.primaryButtonText}>{t('scan.grantPermission')}</Text>
               </Pressable>
             </View>
           )}
@@ -139,7 +150,7 @@ export default function ScanFormScreen({ navigation }: Props) {
           {selectedImageUri ? (
             <Image source={{ uri: selectedImageUri }} style={styles.previewImage} />
           ) : (
-            <Text style={styles.text}>Preview ലഭ്യമല്ല.</Text>
+            <Text style={styles.text}>{t('scan.previewUnavailable')}</Text>
           )}
         </View>
       )}
@@ -152,12 +163,12 @@ export default function ScanFormScreen({ navigation }: Props) {
         accessibilityRole="button"
       >
         <Text style={styles.primaryButtonText}>
-          {capturing ? 'പിടിക്കുന്നു...' : '📸 ചിത്രം എടുക്കുക'}
+          {capturing ? t('scan.capturing') : t('scan.capture')}
         </Text>
       </Pressable>
 
       <Pressable style={styles.secondaryButton} onPress={handlePickFromGallery}>
-        <Text style={styles.secondaryButtonText}>🖼️ Galleryയിൽ നിന്ന് തിരഞ്ഞെടുക്കുക</Text>
+        <Text style={styles.secondaryButtonText}>{t('scan.pickGallery')}</Text>
       </Pressable>
 
       <Pressable
@@ -165,7 +176,7 @@ export default function ScanFormScreen({ navigation }: Props) {
         onPress={() => setShowCamera((prev) => !prev)}
       >
         <Text style={styles.secondaryButtonText}>
-          {showCamera ? 'പ്രിവ്യൂ കാണിക്കുക' : 'ക്യാമറ തുറക്കുക'}
+          {showCamera ? t('scan.showPreview') : t('scan.openCamera')}
         </Text>
       </Pressable>
 
@@ -174,17 +185,20 @@ export default function ScanFormScreen({ navigation }: Props) {
         disabled={!selectedImageUri}
         onPress={() => navigation.navigate('OCRResult', { imageUri: selectedImageUri })}
       >
-        <Text style={styles.primaryButtonText}>➡️ OCR പ്രോസസിലേക്ക് പോകുക</Text>
+        <Text style={styles.primaryButtonText}>{t('scan.toOcr')}</Text>
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
     backgroundColor: '#FFFFFF',
+  },
+  contentContainer: {
+    padding: 16,
+    paddingBottom: 24,
   },
   heading: {
     fontSize: 30,

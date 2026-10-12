@@ -1,47 +1,54 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import LargeActionButton from '../components/LargeActionButton';
 import { RootStackParamList } from '../types/navigation';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
+  const { t } = useLanguage();
+
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* App title and short helper text */}
-      <Text style={styles.title}>FH (ഫോം ഹെൽപ്പ്)</Text>
-      <Text style={styles.subtitle}>സ്വന്തമായി ഫോം പൂരിപ്പിക്കാൻ ലളിതമായ മലയാളം സഹായി</Text>
+      <Text style={styles.title}>{t('home.title')}</Text>
+      <Text style={styles.subtitle}>{t('home.subtitle')}</Text>
 
       <View style={styles.noticeCard}>
-        <Text style={styles.noticeTitle}>🔒 നിങ്ങളുടെ ഡാറ്റ നിങ്ങളുടെ ഫോണിൽ മാത്രം</Text>
-        <Text style={styles.noticeText}>ഇത് ഓഫ്‌ലൈൻ ആപ്പ് ആണ്. സർവർ ആവശ്യമില്ല.</Text>
+        <Text style={styles.noticeTitle}>{t('home.noticeTitle')}</Text>
+        <Text style={styles.noticeText}>{t('home.noticeText')}</Text>
       </View>
 
       {/* Main navigation actions */}
       <View style={styles.buttonGroup}>
         <LargeActionButton
-          label="📷 ഫോം സ്കാൻ ചെയ്യുക"
-          subLabel="ക്യാമറ തുറന്ന് ഫോം ചിത്രം എടുക്കുക"
+          label={t('home.scanLabel')}
+          subLabel={t('home.scanSubLabel')}
           onPress={() => navigation.navigate('ScanForm')}
         />
         <LargeActionButton
-          label="🧾 OCR ഫലം കാണുക"
-          subLabel="ചിത്രത്തിൽ നിന്നുള്ള എഴുത്ത് വായിക്കുക"
+          label={t('home.ocrLabel')}
+          subLabel={t('home.ocrSubLabel')}
           onPress={() => navigation.navigate('OCRResult')}
         />
         <LargeActionButton
-          label="👤 വ്യക്തിഗത വിവരങ്ങൾ"
-          subLabel="പേര്, വിലാസം, ഫോൺ, ജനനത്തീയതി സംരക്ഷിക്കുക"
+          label={t('home.vaultLabel')}
+          subLabel={t('home.vaultSubLabel')}
           onPress={() => navigation.navigate('PersonalVault')}
         />
         <LargeActionButton
-          label="✅ പൂരിപ്പിച്ച ഫോം പ്രിവ്യൂ"
-          subLabel="അവസാനമായി പൂരിപ്പിച്ച മാതൃക കാണുക"
+          label={t('home.previewLabel')}
+          subLabel={t('home.previewSubLabel')}
           onPress={() => navigation.navigate('FilledFormPreview')}
         />
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -49,8 +56,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F1F5F9',
+  },
+  contentContainer: {
     paddingHorizontal: 18,
     paddingTop: 22,
+    paddingBottom: 24,
   },
   title: {
     fontSize: 32,

@@ -16,28 +16,33 @@ import { extractTextFromImage } from '../services/ocrService';
 import { getPersonalVaultData } from '../services/storageService';
 import { MatchResult, PersonalFieldKey, PersonalVaultData } from '../types/app';
 import {
+  getFieldPrompt,
   getFieldExplanation,
-  getMalayalamFieldExplanation,
-  getMalayalamFieldPrompt,
+  getFieldSpeechExplanation,
   matchFormFields,
 } from '../utils/fieldMatcher';
-import { speakMalayalam } from '../services/speechService';
+import { speakText } from '../services/speechService';
 import { useSpeechToText } from '../hooks/useSpeechToText';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OCRResult'>;
-
-const FIELD_LABELS: Record<PersonalFieldKey, string> = {
-  name: 'പേര്',
-  address: 'വിലാസം',
-  phone: 'ഫോൺ',
-  dob: 'ജനനത്തീയതി',
-};
 
 const OCR_CONFIDENCE_THRESHOLD = 70;
 
 type VoiceMode = 'field' | 'confidence' | null;
 
 export default function OCRResultScreen({ route, navigation }: Props) {
+  const { t, language } = useLanguage();
+  const recognitionLanguage = language === 'ml' ? 'ml-IN' : 'en-IN';
+  const speechLanguage = language === 'ml' ? 'ml-IN' : 'en-IN';
+
+  const fieldLabels: Record<PersonalFieldKey, string> = {
+    name: t('field.name'),
+    address: t('field.address'),
+    phone: t('field.phone'),
+    dob: t('field.dob'),
+  };
+
   const imageUri = route.params?.imageUri;
 
   const [loadingOCR, setLoadingOCR] = useState<boolean>(false);
@@ -69,12 +74,17 @@ export default function OCRResultScreen({ route, navigation }: Props) {
     startListening,
     stopListening,
     clearTranscript,
-  } = useSpeechToText('ml-IN');
+  } = useSpeechToText(recognitionLanguage);
 
   // Load personal vault data for auto-fill mapping.
   useEffect(() => {
-    getPersonalVaultData().then(setPersonalData);
-  }, []);
+    getPersonalVaultData()
+      .then(setPersonalData)
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : t('vault.errorRead');
+        setOcrError(message);
+      });
+  }, [t]);
 
   // Detect speech recognizer availability and default service information.
   useEffect(() => {
@@ -98,7 +108,7 @@ export default function OCRResultScreen({ route, navigation }: Props) {
     }
 
     if (!imageUri) {
-      setOcrError('ആദ്യം ഫോം സ്കാൻ സ്ക്രീനിൽ നിന്ന് ഒരു ചിത്രം തിരഞ്ഞെടുക്കുക.');
+      setOcrError(t('ocr.errorSelectImage'));
       return;
     }
 
@@ -110,8 +120,7 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       setOcrConfidence(result.confidence);
       setConfidenceConfirmed(null);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : 'OCR പ്രവർത്തനത്തിൽ പിശക് സംഭവിച്ചു.';
+      const message = error instanceof Error ? error.message : t('ocr.errorGeneric');
       setOcrError(message);
     } finally {
       setLoadingOCR(false);
@@ -196,13 +205,13 @@ export default function OCRResultScreen({ route, navigation }: Props) {
 
   const handleSpeakPrompt = () => {
     const field = pendingRequiredFields[0] ?? 'name';
-    const prompt = getMalayalamFieldPrompt(field);
-    speakMalayalam(prompt);
+    const prompt = getFieldPrompt(field, language);
+    speakText(prompt, speechLanguage);
   };
 
   const handleStartFieldVoiceInput = async () => {
     if (!speechAvailable) {
-      setOcrError('ഈ ഫോണിൽ ശബ്ദം തിരിച്ചറിയൽ സേവനം ലഭ്യമല്ല.');
+      setOcrError(t('ocr.errorSpeechUnavailable'));
       return;
     }
 
@@ -215,12 +224,12 @@ export default function OCRResultScreen({ route, navigation }: Props) {
   };
 
   const handleAskConfidenceByVoice = () => {
-    speakMalayalam('OCR വ്യക്തത കുറവാണ്. ഇത് ശരിയാണോ? അതെ അല്ലെങ്കിൽ ഇല്ല എന്ന് പറയൂ');
+    speakText(t('ocr.confirmQuestion'), speechLanguage);
   };
 
   const handleStartConfidenceConfirmation = async () => {
     if (!speechAvailable) {
-      setOcrError('ഈ ഫോണിൽ ശബ്ദം തിരിച്ചറിയൽ സേവനം ലഭ്യമല്ല.');
+      setOcrError(t('ocr.errorSpeechUnavailable'));
       return;
     }
 
@@ -237,17 +246,17 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       return;
     }
 
-    speakMalayalam(getMalayalamFieldExplanation(selectedField));
+    speakText(getFieldSpeechExplanation(selectedField, language), speechLanguage);
   };
 
   const handleGoToFilledPreview = () => {
     if (!imageUri) {
-      setOcrError('പ്രിവ്യൂ കാണാൻ ആദ്യം ഫോം സ്കാൻ സ്ക്രീനിൽ നിന്ന് ചിത്രം തിരഞ്ഞെടുക്കുക.');
+      setOcrError(t('ocr.errorPreviewNoImage'));
       return;
     }
 
     if (!ocrText.trim()) {
-      setOcrError('ആദ്യം OCR ടെക്സ്റ്റ് എടുക്കുക, ശേഷം പ്രിവ്യൂ സൃഷ്ടിക്കുക.');
+      setOcrError(t('ocr.errorPreviewNoText'));
       return;
     }
 
@@ -258,26 +267,28 @@ export default function OCRResultScreen({ route, navigation }: Props) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.heading}>🧾 OCR ഫലം</Text>
-      <Text style={styles.helperText}>ആദ്യം OCR എടുക്കുക. ശേഷം മാച്ച് ചെയ്ത ഫീൽഡുകൾ പരിശോധിക്കുക.</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.heading}>{t('ocr.heading')}</Text>
+      <Text style={styles.helperText}>{t('ocr.helper')}</Text>
 
       <Pressable
         style={[styles.primaryButton, loadingOCR && styles.buttonDisabled]}
         onPress={handleRunOCR}
         disabled={loadingOCR}
       >
-        <Text style={styles.primaryButtonText}>📘 OCR ടെക്സ്റ്റ് എടുക്കുക</Text>
+        <Text style={styles.primaryButtonText}>{t('ocr.run')}</Text>
       </Pressable>
 
       {!speechAvailable ? (
         <View style={styles.warningBlock}>
-          <Text style={styles.warningTitle}>🎤 ശബ്ദ സേവനം ലഭ്യമല്ല</Text>
-          <Text style={styles.warningText}>
-            ശബ്ദ ഇൻപുട്ട് ഉപയോഗിക്കാൻ ഫോണിൽ ശബ്ദം തിരിച്ചറിയൽ സേവനം വേണം.
-          </Text>
+          <Text style={styles.warningTitle}>{t('ocr.speechUnavailableTitle')}</Text>
+          <Text style={styles.warningText}>{t('ocr.speechUnavailableText')}</Text>
           {speechServiceName ? (
-            <Text style={styles.warningText}>സേവനം: {speechServiceName}</Text>
+            <Text style={styles.warningText}>Service: {speechServiceName}</Text>
           ) : null}
         </View>
       ) : null}
@@ -285,24 +296,22 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       {/* Confidence check for unclear OCR results */}
       {isLowConfidence ? (
         <View style={styles.warningBlock}>
-          <Text style={styles.warningTitle}>⚠️ OCR വ്യക്തത കുറവാണ്</Text>
+          <Text style={styles.warningTitle}>{t('ocr.lowConfidenceTitle')}</Text>
           <Text style={styles.warningText}>
-            വിശ്വാസ്യത {ocrConfidence.toFixed(1)}% ആണ്. ദയവായി ശബ്ദം ഉപയോഗിച്ച് സ്ഥിരീകരിക്കുക.
+            {t('ocr.lowConfidenceText', { confidence: ocrConfidence.toFixed(1) })}
           </Text>
 
           <Pressable style={styles.secondaryButton} onPress={handleAskConfidenceByVoice}>
-            <Text style={styles.secondaryButtonText}>🔊 സ്ഥിരീകരണ ചോദ്യം കേൾക്കുക</Text>
+            <Text style={styles.secondaryButtonText}>{t('ocr.listenQuestion')}</Text>
           </Pressable>
 
           <Pressable style={styles.primaryButton} onPress={handleStartConfidenceConfirmation}>
-            <Text style={styles.primaryButtonText}>🎤 അതെ / ഇല്ല പറയുക</Text>
+            <Text style={styles.primaryButtonText}>{t('ocr.sayYesNo')}</Text>
           </Pressable>
 
           {confidenceConfirmed !== null ? (
             <Text style={styles.confirmStatusText}>
-              {confidenceConfirmed
-                ? '✅ ഉപയോക്താവ് സ്ഥിരീകരിച്ചു'
-                : '❌ ഉപയോക്താവ് വീണ്ടും പരിശോധിക്കാൻ പറഞ്ഞു'}
+              {confidenceConfirmed ? t('ocr.confirmedYes') : t('ocr.confirmedNo')}
             </Text>
           ) : null}
         </View>
@@ -311,7 +320,7 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       {loadingOCR ? (
         <View style={styles.block}>
           <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.text}>ടെക്സ്റ്റ് വായിക്കുന്നു...</Text>
+          <Text style={styles.text}>{t('ocr.reading')}</Text>
         </View>
       ) : null}
 
@@ -323,34 +332,36 @@ export default function OCRResultScreen({ route, navigation }: Props) {
 
       {/* OCR output section */}
       <View style={styles.block}>
-        <Text style={styles.sectionTitle}>എടുത്തെടുത്ത എഴുത്ത്</Text>
-        <Text style={styles.confidenceText}>വിശ്വാസ്യത: {ocrConfidence.toFixed(1)}%</Text>
-        <Text style={styles.ocrText}>{ocrText || 'OCR ഫലം ഇവിടെ കാണിക്കും.'}</Text>
+        <Text style={styles.sectionTitle}>{t('ocr.extractedText')}</Text>
+        <Text style={styles.confidenceText}>
+          {t('ocr.confidence', { confidence: ocrConfidence.toFixed(1) })}
+        </Text>
+        <Text style={styles.ocrText}>{ocrText || t('ocr.emptyResult')}</Text>
       </View>
 
       {/* Field matching section */}
       <View style={styles.block}>
-        <Text style={styles.sectionTitle}>മാച്ച് ചെയ്ത ഫീൽഡുകൾ</Text>
-        {(Object.keys(FIELD_LABELS) as PersonalFieldKey[]).map((key) => (
+        <Text style={styles.sectionTitle}>{t('ocr.matchedFields')}</Text>
+        {(Object.keys(fieldLabels) as PersonalFieldKey[]).map((key) => (
           <Pressable
             key={key}
             style={styles.fieldRow}
             onPress={() => setSelectedField(key)}
             accessibilityRole="button"
           >
-            <Text style={styles.fieldLabel}>{FIELD_LABELS[key]}</Text>
-            <Text style={styles.fieldValue}>{finalFilledFields[key] || '---'}</Text>
-            <Text style={styles.fieldHint}>ഫീൽഡിന്റെ അർത്ഥം അറിയാൻ ഇവിടെ അമർത്തുക</Text>
+            <Text style={styles.fieldLabel}>{fieldLabels[key]}</Text>
+            <Text style={styles.fieldValue}>{finalFilledFields[key] || t('common.empty')}</Text>
+            <Text style={styles.fieldHint}>{t('ocr.fieldHint')}</Text>
           </Pressable>
         ))}
       </View>
 
       {/* Voice assistant section */}
       <View style={styles.block}>
-        <Text style={styles.sectionTitle}>ശബ്ദ സഹായി (മലയാളം)</Text>
+        <Text style={styles.sectionTitle}>{t('ocr.voiceAssistant')}</Text>
 
         <Pressable style={styles.secondaryButton} onPress={handleSpeakPrompt}>
-          <Text style={styles.secondaryButtonText}>🔊 നിർദ്ദേശം കേൾക്കുക</Text>
+          <Text style={styles.secondaryButtonText}>{t('ocr.listenPrompt')}</Text>
         </Pressable>
 
         {!listening ? (
@@ -359,20 +370,20 @@ export default function OCRResultScreen({ route, navigation }: Props) {
             onPress={handleStartFieldVoiceInput}
             disabled={!speechAvailable}
           >
-            <Text style={styles.primaryButtonText}>🎤 പറയാൻ തുടങ്ങുക</Text>
+            <Text style={styles.primaryButtonText}>{t('ocr.startSpeaking')}</Text>
           </Pressable>
         ) : (
           <Pressable style={styles.secondaryButton} onPress={stopListening}>
-            <Text style={styles.secondaryButtonText}>⏹️ ശബ്ദ ഇൻപുട്ട് നിർത്തുക</Text>
+            <Text style={styles.secondaryButtonText}>{t('ocr.stopSpeaking')}</Text>
           </Pressable>
         )}
 
         <Pressable style={styles.clearButton} onPress={clearTranscript}>
-          <Text style={styles.clearButtonText}>ട്രാൻസ്ക്രിപ്റ്റ് മായ്ക്കുക</Text>
+          <Text style={styles.clearButtonText}>{t('ocr.clearTranscript')}</Text>
         </Pressable>
 
-        <Text style={styles.transcriptLabel}>ശബ്ദ ട്രാൻസ്ക്രിപ്റ്റ്:</Text>
-        <Text style={styles.transcriptText}>{transcript || 'ഇവിടെ ശബ്ദ ഇൻപുട്ട് കാണിക്കും.'}</Text>
+        <Text style={styles.transcriptLabel}>{t('ocr.transcriptLabel')}</Text>
+        <Text style={styles.transcriptText}>{transcript || t('ocr.transcriptEmpty')}</Text>
 
         {speechError ? <Text style={styles.errorText}>{speechError}</Text> : null}
       </View>
@@ -383,7 +394,7 @@ export default function OCRResultScreen({ route, navigation }: Props) {
         onPress={handleGoToFilledPreview}
         disabled={!ocrText.trim() || loadingOCR}
       >
-        <Text style={styles.primaryButtonText}>✅ പൂരിപ്പിച്ച ഫോം പ്രിവ്യൂ സൃഷ്ടിക്കുക</Text>
+        <Text style={styles.primaryButtonText}>{t('ocr.generatePreview')}</Text>
       </Pressable>
 
       {/* Explain Field modal */}
@@ -396,22 +407,22 @@ export default function OCRResultScreen({ route, navigation }: Props) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>
-              {selectedField ? FIELD_LABELS[selectedField] : ''}
+              {selectedField ? fieldLabels[selectedField] : ''}
             </Text>
 
             <Text style={styles.modalDescription}>
-              {selectedField ? getFieldExplanation(selectedField) : ''}
+              {selectedField ? getFieldExplanation(selectedField, language) : ''}
             </Text>
 
             <Pressable style={styles.primaryButton} onPress={handleSpeakFieldExplanation}>
-              <Text style={styles.primaryButtonText}>🔊 ശബ്ദത്തിൽ വിശദീകരിക്കുക</Text>
+              <Text style={styles.primaryButtonText}>{t('ocr.voiceExplain')}</Text>
             </Pressable>
 
             <Pressable
               style={styles.secondaryButton}
               onPress={() => setSelectedField(null)}
             >
-              <Text style={styles.secondaryButtonText}>അടയ്ക്കുക</Text>
+              <Text style={styles.secondaryButtonText}>{t('ocr.close')}</Text>
             </Pressable>
           </View>
         </View>

@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { EMPTY_PERSONAL_VAULT, PersonalVaultData } from '../types/app';
 import { getPersonalVaultData, savePersonalVaultData } from '../services/storageService';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export default function PersonalVaultScreen() {
+  const { t } = useLanguage();
   const [form, setForm] = useState<PersonalVaultData>(EMPTY_PERSONAL_VAULT);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -21,8 +23,12 @@ export default function PersonalVaultScreen() {
   useEffect(() => {
     getPersonalVaultData()
       .then((data) => setForm(data))
+      .catch((e) => {
+        const message = e instanceof Error ? e.message : t('vault.errorRead');
+        setScreenError(message);
+      })
       .finally(() => setLoading(false));
-  }, []);
+  }, [t]);
 
   const updateField = (key: keyof PersonalVaultData, value: string) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -37,7 +43,7 @@ export default function PersonalVaultScreen() {
     };
 
     if (!normalized.name) {
-      setScreenError('ദയവായി പേര് നൽകുക.');
+      setScreenError(t('vault.errorNameRequired'));
       return;
     }
 
@@ -46,9 +52,9 @@ export default function PersonalVaultScreen() {
     try {
       await savePersonalVaultData(normalized);
       setForm(normalized);
-      Alert.alert('സേവ് ചെയ്തു', 'വ്യക്തിഗത വിവരങ്ങൾ ഫോണിൽ സേവ് ചെയ്തു.');
+      Alert.alert(t('vault.alertSavedTitle'), t('vault.alertSavedMessage'));
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'ഡാറ്റ സേവ് ചെയ്യുമ്പോൾ പിശക് സംഭവിച്ചു.';
+      const message = e instanceof Error ? e.message : t('vault.errorSave');
       setScreenError(message);
     } finally {
       setSaving(false);
@@ -62,7 +68,7 @@ export default function PersonalVaultScreen() {
       const data = await getPersonalVaultData();
       setForm(data);
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'ഡാറ്റ വായിക്കുമ്പോൾ പിശക് സംഭവിച്ചു.';
+      const message = e instanceof Error ? e.message : t('vault.errorRead');
       setScreenError(message);
     } finally {
       setLoading(false);
@@ -70,10 +76,14 @@ export default function PersonalVaultScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.heading}>👤 വ്യക്തിഗത വിവരങ്ങൾ</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.heading}>{t('vault.heading')}</Text>
 
-      <Text style={styles.subText}>ഈ വിവരങ്ങൾ ഉപയോഗിച്ച് ഫോം സ്വയം പൂരിപ്പിക്കാൻ സഹായിക്കും.</Text>
+      <Text style={styles.subText}>{t('vault.subText')}</Text>
 
       {screenError ? (
         <View style={styles.errorBlock}>
@@ -82,23 +92,23 @@ export default function PersonalVaultScreen() {
       ) : null}
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>🪪 പേര്</Text>
+        <Text style={styles.label}>{t('vault.name')}</Text>
         <TextInput
           style={styles.input}
           value={form.name}
           onChangeText={(value) => updateField('name', value)}
-          placeholder="നിങ്ങളുടെ പേര്"
+          placeholder={t('vault.placeholderName')}
           placeholderTextColor="#94A3B8"
         />
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>🏠 വിലാസം</Text>
+        <Text style={styles.label}>{t('vault.address')}</Text>
         <TextInput
           style={[styles.input, styles.multilineInput]}
           value={form.address}
           onChangeText={(value) => updateField('address', value)}
-          placeholder="നിങ്ങളുടെ വിലാസം"
+          placeholder={t('vault.placeholderAddress')}
           placeholderTextColor="#94A3B8"
           multiline
           numberOfLines={3}
@@ -106,19 +116,19 @@ export default function PersonalVaultScreen() {
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>📱 ഫോൺ നമ്പർ</Text>
+        <Text style={styles.label}>{t('vault.phone')}</Text>
         <TextInput
           style={styles.input}
           value={form.phone}
           onChangeText={(value) => updateField('phone', value)}
           keyboardType="phone-pad"
-          placeholder="നിങ്ങളുടെ ഫോൺ നമ്പർ"
+          placeholder={t('vault.placeholderPhone')}
           placeholderTextColor="#94A3B8"
         />
       </View>
 
       <View style={styles.inputGroup}>
-        <Text style={styles.label}>🎂 ജനനത്തീയതി</Text>
+        <Text style={styles.label}>{t('vault.dob')}</Text>
         <TextInput
           style={styles.input}
           value={form.dob}
@@ -134,13 +144,13 @@ export default function PersonalVaultScreen() {
         disabled={saving}
       >
         <Text style={styles.primaryButtonText}>
-          {saving ? 'സേവ് ചെയ്യുന്നു...' : '💾 ഫോണിൽ സേവ് ചെയ്യുക'}
+          {saving ? t('vault.saving') : t('vault.save')}
         </Text>
       </Pressable>
 
       <Pressable style={styles.secondaryButton} onPress={handleReload}>
         <Text style={styles.secondaryButtonText}>
-          {loading ? 'ലോഡ് ചെയ്യുന്നു...' : '↻ സേവ് ചെയ്ത ഡാറ്റ വീണ്ടും കാണിക്കുക'}
+          {loading ? t('vault.loading') : t('vault.reload')}
         </Text>
       </Pressable>
     </ScrollView>

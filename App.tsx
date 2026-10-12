@@ -7,10 +7,14 @@ import OCRResultScreen from './src/screens/OCRResultScreen';
 import PersonalVaultScreen from './src/screens/PersonalVaultScreen';
 import FilledFormPreviewScreen from './src/screens/FilledFormPreviewScreen';
 import { RootStackParamList } from './src/types/navigation';
+import { LanguageProvider, useLanguage } from './src/i18n/LanguageContext';
+import HeaderLanguageMenu from './src/components/HeaderLanguageMenu';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export default function App() {
+function AppNavigator() {
+  const { t } = useLanguage();
+
   return (
     <NavigationContainer>
       <StatusBar style="dark" />
@@ -21,6 +25,7 @@ export default function App() {
         screenOptions={{
           headerTitleAlign: 'center',
           headerStyle: { backgroundColor: '#E0E7FF' },
+          headerRight: () => <HeaderLanguageMenu />,
           headerTitleStyle: {
             fontSize: 22,
             fontWeight: '700',
@@ -30,29 +35,37 @@ export default function App() {
         <Stack.Screen
           name="Home"
           component={HomeScreen}
-          options={{ title: 'FH (ഫോം ഹെൽപ്പ്)' }}
+          options={{ title: t('screen.homeTitle') }}
         />
         <Stack.Screen
           name="ScanForm"
           component={ScanFormScreen}
-          options={{ title: 'ഫോം സ്കാൻ' }}
+          options={{ title: t('screen.scanTitle') }}
         />
         <Stack.Screen
           name="OCRResult"
           component={OCRResultScreen}
-          options={{ title: 'OCR ഫലം' }}
+          options={{ title: t('screen.ocrTitle') }}
         />
         <Stack.Screen
           name="PersonalVault"
           component={PersonalVaultScreen}
-          options={{ title: 'വ്യക്തിഗത വിവരങ്ങൾ' }}
+          options={{ title: t('screen.vaultTitle') }}
         />
         <Stack.Screen
           name="FilledFormPreview"
           component={FilledFormPreviewScreen}
-          options={{ title: 'പൂരിപ്പിച്ച ഫോം പ്രിവ്യൂ' }}
+          options={{ title: t('screen.previewTitle') }}
         />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AppNavigator />
+    </LanguageProvider>
   );
 }

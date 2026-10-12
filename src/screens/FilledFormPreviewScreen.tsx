@@ -12,17 +12,19 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { PersonalFieldKey } from '../types/app';
 import { RootStackParamList } from '../types/navigation';
 import { DEFAULT_FIELD_POSITIONS } from '../utils/overlayLayout';
+import { useLanguage } from '../i18n/LanguageContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FilledFormPreview'>;
 
-const FIELD_LABELS: Record<PersonalFieldKey, string> = {
-  name: 'പേര്',
-  address: 'വിലാസം',
-  phone: 'ഫോൺ',
-  dob: 'ജനനത്തീയതി',
-};
-
 export default function FilledFormPreviewScreen({ route }: Props) {
+  const { t } = useLanguage();
+  const fieldLabels: Record<PersonalFieldKey, string> = {
+    name: t('field.name'),
+    address: t('field.address'),
+    phone: t('field.phone'),
+    dob: t('field.dob'),
+  };
+
   const imageUri = route.params?.imageUri;
   const filledFields = route.params?.filledFields ?? {};
   const hasAnyFilledValue = (Object.values(filledFields) as string[]).some((value) =>
@@ -34,20 +36,20 @@ export default function FilledFormPreviewScreen({ route }: Props) {
 
   const overlayItems = useMemo(
     () =>
-      (Object.keys(FIELD_LABELS) as PersonalFieldKey[])
+      (Object.keys(fieldLabels) as PersonalFieldKey[])
         .filter((fieldKey) => Boolean(filledFields[fieldKey]?.trim()))
         .map((fieldKey) => {
           const position = DEFAULT_FIELD_POSITIONS[fieldKey];
 
           return {
             fieldKey,
-            label: FIELD_LABELS[fieldKey],
+            label: fieldLabels[fieldKey],
             value: filledFields[fieldKey] ?? '',
             left: canvasWidth * position.xRatio,
             top: canvasHeight * position.yRatio,
           };
         }),
-    [canvasHeight, canvasWidth, filledFields]
+    [canvasHeight, canvasWidth, filledFields, fieldLabels]
   );
 
   const handleCanvasLayout = (event: LayoutChangeEvent) => {
@@ -56,12 +58,16 @@ export default function FilledFormPreviewScreen({ route }: Props) {
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      <Text style={styles.heading}>✅ പൂരിപ്പിച്ച ഫോം പ്രിവ്യൂ</Text>
-      <Text style={styles.subHeading}>ഫോം ശരിയായി പൂരിപ്പിച്ചോ എന്ന് ഇവിടെ ഉറപ്പാക്കാം.</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}
+      keyboardShouldPersistTaps="handled"
+    >
+      <Text style={styles.heading}>{t('preview.heading')}</Text>
+      <Text style={styles.subHeading}>{t('preview.subHeading')}</Text>
 
       <View style={styles.previewCard}>
-        <Text style={styles.previewTitle}>📝 പ്രിവ്യൂ ഭാഗം</Text>
+        <Text style={styles.previewTitle}>{t('preview.cardTitle')}</Text>
 
         {imageUri ? (
           <View style={styles.formCanvas} onLayout={handleCanvasLayout}>
@@ -85,32 +91,26 @@ export default function FilledFormPreviewScreen({ route }: Props) {
             ))}
           </View>
         ) : (
-          <Text style={styles.previewText}>
-            സ്കാൻ ചെയ്ത ചിത്രം ലഭ്യമല്ല. ആദ്യം ഫോം സ്കാൻ വഴി ചിത്രം എടുത്ത് OCR സ്ക്രീനിൽ നിന്ന്
-            ഇവിടെ വരുക.
-          </Text>
+          <Text style={styles.previewText}>{t('preview.noImage')}</Text>
         )}
       </View>
 
       <View style={styles.tipCard}>
-        <Text style={styles.tipTitle}>💡 മുതിർന്നവർക്ക് ലളിത നിർദ്ദേശം</Text>
-        <Text style={styles.tipText}>
-          1) പേര് പരിശോധിക്കുക{`\n`}2) വിലാസം പരിശോധിക്കുക{`\n`}3) ഫോൺ നമ്പർ പരിശോധിക്കുക
-          {`\n`}4) ജനനത്തീയതി പരിശോധിക്കുക
-        </Text>
+        <Text style={styles.tipTitle}>{t('preview.tipTitle')}</Text>
+        <Text style={styles.tipText}>{t('preview.tipText')}</Text>
       </View>
 
       <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>📌 പൂരിപ്പിച്ച മൂല്യങ്ങളുടെ സംഗ്രഹം</Text>
+        <Text style={styles.summaryTitle}>{t('preview.summaryTitle')}</Text>
 
         {!hasAnyFilledValue ? (
-          <Text style={styles.emptyHint}>ഇപ്പോൾ പൂരിപ്പിച്ച മൂല്യങ്ങൾ ലഭ്യമല്ല.</Text>
+          <Text style={styles.emptyHint}>{t('preview.empty')}</Text>
         ) : null}
 
-        {(Object.keys(FIELD_LABELS) as PersonalFieldKey[]).map((fieldKey) => (
+        {(Object.keys(fieldLabels) as PersonalFieldKey[]).map((fieldKey) => (
           <View key={fieldKey} style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{FIELD_LABELS[fieldKey]}</Text>
-            <Text style={styles.summaryValue}>{filledFields[fieldKey] || '---'}</Text>
+            <Text style={styles.summaryLabel}>{fieldLabels[fieldKey]}</Text>
+            <Text style={styles.summaryValue}>{filledFields[fieldKey] || t('common.empty')}</Text>
           </View>
         ))}
       </View>
@@ -122,7 +122,7 @@ export default function FilledFormPreviewScreen({ route }: Props) {
         ]}
         disabled={!imageUri || !hasAnyFilledValue}
       >
-        <Text style={styles.primaryButtonText}>🖨️ അവസാന പ്രിവ്യൂ തയ്യാറായി</Text>
+        <Text style={styles.primaryButtonText}>{t('preview.ready')}</Text>
       </Pressable>
     </ScrollView>
   );
