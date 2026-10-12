@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Modal,
   Platform,
   Pressable,
@@ -24,12 +25,150 @@ import {
 import { speakText } from '../services/speechService';
 import { useSpeechToText } from '../hooks/useSpeechToText';
 import { useLanguage } from '../i18n/LanguageContext';
+import Colors from '../theme/colors';
+import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OCRResult'>;
 
 const OCR_CONFIDENCE_THRESHOLD = 70;
 
 type VoiceMode = 'field' | 'confidence' | null;
+
+const FIELD_ICONS: Record<PersonalFieldKey, string> = {
+  name: '🪪',
+  address: '🏠',
+  phone: '📱',
+  dob: '🎂',
+};
+
+function SectionCard({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={cardStyles.card}>
+      <View style={cardStyles.header}>
+        {icon ? <Text style={cardStyles.icon}>{icon}</Text> : null}
+        <Text style={cardStyles.title}>{title}</Text>
+      </View>
+      {children}
+    </View>
+  );
+}
+
+const cardStyles = StyleSheet.create({
+  card: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    ...Shadow.sm,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  icon: {
+    fontSize: 20,
+    lineHeight: 26,
+  },
+  title: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
+  },
+});
+
+function ActionBtn({
+  label,
+  onPress,
+  disabled,
+  variant = 'primary',
+  small,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  variant?: 'primary' | 'secondary' | 'ghost';
+  small?: boolean;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        style={[
+          btnStyles.btn,
+          variant === 'primary' && btnStyles.primary,
+          variant === 'secondary' && btnStyles.secondary,
+          variant === 'ghost' && btnStyles.ghost,
+          small && btnStyles.small,
+          disabled && btnStyles.disabled,
+        ]}
+        onPress={onPress}
+        onPressIn={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, tension: 200, friction: 10 }).start()}
+        onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200, friction: 10 }).start()}
+        disabled={disabled}
+      >
+        <Text style={[btnStyles.text, variant === 'secondary' && btnStyles.textSecondary, variant === 'ghost' && btnStyles.textGhost]}>
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const btnStyles = StyleSheet.create({
+  btn: {
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.base,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  primary: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primary,
+    ...Shadow.lg,
+  },
+  secondary: {
+    backgroundColor: Colors.bgElevated,
+    borderColor: Colors.border,
+  },
+  ghost: {
+    backgroundColor: Colors.transparent,
+    borderColor: Colors.borderLight,
+  },
+  small: {
+    paddingVertical: Spacing.sm,
+  },
+  disabled: { opacity: 0.45 },
+  text: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
+  },
+  textSecondary: {
+    color: Colors.textSecondary,
+    fontWeight: Typography.semibold,
+  },
+  textGhost: {
+    color: Colors.textMuted,
+    fontSize: Typography.base,
+  },
+});
 
 export default function OCRResultScreen({ route, navigation }: Props) {
   const { t, language } = useLanguage();
@@ -49,49 +188,34 @@ export default function OCRResultScreen({ route, navigation }: Props) {
   const [ocrText, setOcrText] = useState<string>('');
   const [ocrConfidence, setOcrConfidence] = useState<number>(0);
   const [ocrError, setOcrError] = useState<string>('');
+  const [ocrDone, setOcrDone] = useState<boolean>(false);
 
   const [personalData, setPersonalData] = useState<PersonalVaultData>({
-    name: '',
-    address: '',
-    phone: '',
-    dob: '',
+    name: '', address: '', phone: '', dob: '',
   });
-
-  const [voiceFilledFields, setVoiceFilledFields] = useState<
-    Partial<Record<PersonalFieldKey, string>>
-  >({});
+  const [voiceFilledFields, setVoiceFilledFields] = useState<Partial<Record<PersonalFieldKey, string>>>({});
   const [voiceMode, setVoiceMode] = useState<VoiceMode>(null);
-
   const [selectedField, setSelectedField] = useState<PersonalFieldKey | null>(null);
   const [confidenceConfirmed, setConfidenceConfirmed] = useState<boolean | null>(null);
   const [speechAvailable, setSpeechAvailable] = useState<boolean>(true);
   const [speechServiceName, setSpeechServiceName] = useState<string>('');
 
-  const {
-    transcript,
-    listening,
-    error: speechError,
-    startListening,
-    stopListening,
-    clearTranscript,
-  } = useSpeechToText(recognitionLanguage);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseLoop = useRef<Animated.CompositeAnimation | null>(null);
 
-  // Load personal vault data for auto-fill mapping.
+  const { transcript, listening, error: speechError, startListening, stopListening, clearTranscript } =
+    useSpeechToText(recognitionLanguage);
+
   useEffect(() => {
     getPersonalVaultData()
       .then(setPersonalData)
-      .catch((error) => {
-        const message = error instanceof Error ? error.message : t('vault.errorRead');
-        setOcrError(message);
-      });
+      .catch((error) => setOcrError(error instanceof Error ? error.message : t('vault.errorRead')));
   }, [t]);
 
-  // Detect speech recognizer availability and default service information.
   useEffect(() => {
     try {
       const available = ExpoSpeechRecognitionModule.isRecognitionAvailable();
       setSpeechAvailable(available);
-
       if (Platform.OS === 'android') {
         const service = ExpoSpeechRecognitionModule.getDefaultRecognitionService();
         setSpeechServiceName(service?.packageName ?? '');
@@ -101,169 +225,133 @@ export default function OCRResultScreen({ route, navigation }: Props) {
     }
   }, []);
 
-  // Run OCR extraction for the selected image.
-  const handleRunOCR = async () => {
-    if (loadingOCR) {
-      return;
+  useEffect(() => {
+    if (listening) {
+      pulseLoop.current = Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, { toValue: 1.12, duration: 600, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulseLoop.current.start();
+    } else {
+      pulseLoop.current?.stop();
+      Animated.timing(pulseAnim, { toValue: 1, duration: 200, useNativeDriver: true }).start();
     }
+  }, [listening]);
 
-    if (!imageUri) {
-      setOcrError(t('ocr.errorSelectImage'));
-      return;
+  useEffect(() => {
+    if (imageUri && !ocrDone && !loadingOCR && !ocrText) {
+      handleRunOCR();
     }
+  }, [imageUri]);
+
+  const handleAutoFillAll = () => {
+    const filled: Partial<Record<PersonalFieldKey, string>> = {};
+    (['name', 'address', 'phone', 'dob'] as PersonalFieldKey[]).forEach((k) => {
+      if (personalData[k]?.trim()) {
+        filled[k] = personalData[k].trim();
+      }
+    });
+    setVoiceFilledFields((prev) => ({ ...prev, ...filled }));
+  };
+
+  const handleRunOCR = async () => {
+    if (loadingOCR) return;
+    if (!imageUri) { setOcrError(t('ocr.errorSelectImage')); return; }
 
     setLoadingOCR(true);
     setOcrError('');
+    setOcrDone(false);
     try {
       const result = await extractTextFromImage(imageUri);
       setOcrText(result.text);
       setOcrConfidence(result.confidence);
       setConfidenceConfirmed(null);
+      setOcrDone(true);
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('ocr.errorGeneric');
-      setOcrError(message);
+      setOcrError(error instanceof Error ? error.message : t('ocr.errorGeneric'));
     } finally {
       setLoadingOCR(false);
     }
   };
 
-  // Create mapping between OCR labels and stored vault values.
   const matchResult: MatchResult = useMemo(() => {
-    if (!ocrText) {
-      return {
-        matchedFields: {},
-        requiredFields: [],
-      };
-    }
+    if (!ocrText) return { matchedFields: {}, requiredFields: [] };
     return matchFormFields(ocrText, personalData);
   }, [ocrText, personalData]);
 
-  // Final merged fields: vault-matched values + speech-filled values.
   const finalFilledFields = useMemo(
-    () => ({
-      ...matchResult.matchedFields,
-      ...voiceFilledFields,
-    }),
+    () => ({ ...matchResult.matchedFields, ...voiceFilledFields }),
     [matchResult.matchedFields, voiceFilledFields]
   );
 
-  // Determine which required fields are still missing.
   const pendingRequiredFields = useMemo(
-    () =>
-      matchResult.requiredFields.filter((key) => {
-        const value = finalFilledFields[key]?.trim();
-        return !value;
-      }),
+    () => matchResult.requiredFields.filter((key) => !finalFilledFields[key]?.trim()),
     [finalFilledFields, matchResult.requiredFields]
   );
 
-  // Fill the first missing required field using voice transcript.
   useEffect(() => {
-    if (!transcript.trim()) {
-      return;
-    }
+    if (!transcript.trim()) return;
 
     if (voiceMode === 'confidence') {
       const normalized = transcript.trim().toLowerCase();
-      const isYes =
-        normalized.includes('അതെ') ||
-        normalized.includes('ശരി') ||
-        normalized.includes('yes') ||
-        normalized.includes('ok');
-      const isNo =
-        normalized.includes('ഇല്ല') ||
-        normalized.includes('വേണ്ട') ||
-        normalized.includes('no');
-
-      if (isYes) {
-        setConfidenceConfirmed(true);
-      } else if (isNo) {
-        setConfidenceConfirmed(false);
-      }
-
+      const isYes = normalized.includes('അതെ') || normalized.includes('ശരി') || normalized.includes('yes') || normalized.includes('ok');
+      const isNo = normalized.includes('ഇല്ല') || normalized.includes('വേണ്ട') || normalized.includes('no');
+      if (isYes) setConfidenceConfirmed(true);
+      else if (isNo) setConfidenceConfirmed(false);
       setVoiceMode(null);
       return;
     }
 
-    if (voiceMode !== 'field') {
-      return;
-    }
-
+    if (voiceMode !== 'field') return;
     const missingField = pendingRequiredFields[0];
-    if (!missingField) {
-      return;
-    }
-
-    setVoiceFilledFields((prev) => ({
-      ...prev,
-      [missingField]: transcript.trim(),
-    }));
+    if (!missingField) return;
+    setVoiceFilledFields((prev) => ({ ...prev, [missingField]: transcript.trim() }));
     setVoiceMode(null);
   }, [pendingRequiredFields, transcript, voiceMode]);
 
   const isLowConfidence = ocrConfidence > 0 && ocrConfidence < OCR_CONFIDENCE_THRESHOLD;
+  const filledCount = Object.values(finalFilledFields).filter((v) => v?.trim()).length;
 
   const handleSpeakPrompt = () => {
     const field = pendingRequiredFields[0] ?? 'name';
-    const prompt = getFieldPrompt(field, language);
-    speakText(prompt, speechLanguage);
+    speakText(getFieldPrompt(field, language), speechLanguage);
   };
 
   const handleStartFieldVoiceInput = async () => {
-    if (!speechAvailable) {
-      setOcrError(t('ocr.errorSpeechUnavailable'));
-      return;
-    }
-
+    if (!speechAvailable) { setOcrError(t('ocr.errorSpeechUnavailable')); return; }
     setVoiceMode('field');
     clearTranscript();
     const started = await startListening();
-    if (!started) {
-      setVoiceMode(null);
-    }
+    if (!started) setVoiceMode(null);
   };
 
-  const handleAskConfidenceByVoice = () => {
-    speakText(t('ocr.confirmQuestion'), speechLanguage);
-  };
+  const handleAskConfidenceByVoice = () => speakText(t('ocr.confirmQuestion'), speechLanguage);
 
   const handleStartConfidenceConfirmation = async () => {
-    if (!speechAvailable) {
-      setOcrError(t('ocr.errorSpeechUnavailable'));
-      return;
-    }
-
+    if (!speechAvailable) { setOcrError(t('ocr.errorSpeechUnavailable')); return; }
     setVoiceMode('confidence');
     clearTranscript();
     const started = await startListening();
-    if (!started) {
-      setVoiceMode(null);
-    }
+    if (!started) setVoiceMode(null);
   };
 
   const handleSpeakFieldExplanation = () => {
-    if (!selectedField) {
-      return;
-    }
-
+    if (!selectedField) return;
     speakText(getFieldSpeechExplanation(selectedField, language), speechLanguage);
   };
 
   const handleGoToFilledPreview = () => {
-    if (!imageUri) {
-      setOcrError(t('ocr.errorPreviewNoImage'));
-      return;
-    }
+    if (!imageUri) { setOcrError(t('ocr.errorPreviewNoImage')); return; }
+    if (!ocrText.trim()) { setOcrError(t('ocr.errorPreviewNoText')); return; }
+    navigation.navigate('FilledFormPreview', { imageUri, filledFields: finalFilledFields });
+  };
 
-    if (!ocrText.trim()) {
-      setOcrError(t('ocr.errorPreviewNoText'));
-      return;
-    }
-
-    navigation.navigate('FilledFormPreview', {
-      imageUri,
-      filledFields: finalFilledFields,
-    });
+  const getConfidenceColor = () => {
+    if (ocrConfidence >= 85) return Colors.success;
+    if (ocrConfidence >= OCR_CONFIDENCE_THRESHOLD) return Colors.warning;
+    return Colors.danger;
   };
 
   return (
@@ -271,133 +359,171 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
       <Text style={styles.heading}>{t('ocr.heading')}</Text>
       <Text style={styles.helperText}>{t('ocr.helper')}</Text>
 
-      <Pressable
-        style={[styles.primaryButton, loadingOCR && styles.buttonDisabled]}
+      {/* Run OCR button */}
+      <ActionBtn
+        label={loadingOCR ? '⏳  ' + t('ocr.reading') : '📘  ' + t('ocr.run')}
         onPress={handleRunOCR}
-        disabled={loadingOCR}
-      >
-        <Text style={styles.primaryButtonText}>{t('ocr.run')}</Text>
-      </Pressable>
+        disabled={loadingOCR || !imageUri}
+      />
 
+      {!imageUri && (
+        <View style={styles.noImageBanner}>
+          <Text style={styles.noImageText}>📷  No image selected. Go to Scan Form first.</Text>
+        </View>
+      )}
+
+      {/* Loading indicator */}
+      {loadingOCR ? (
+        <View style={styles.loadingBlock}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+          <Text style={styles.loadingText}>{t('ocr.reading')}</Text>
+        </View>
+      ) : null}
+
+      {/* Error block */}
+      {ocrError ? (
+        <View style={styles.errorBlock}>
+          <Text style={styles.errorText}>⚠️  {ocrError}</Text>
+        </View>
+      ) : null}
+
+      {/* Speech unavailable warning */}
       {!speechAvailable ? (
         <View style={styles.warningBlock}>
           <Text style={styles.warningTitle}>{t('ocr.speechUnavailableTitle')}</Text>
           <Text style={styles.warningText}>{t('ocr.speechUnavailableText')}</Text>
-          {speechServiceName ? (
-            <Text style={styles.warningText}>Service: {speechServiceName}</Text>
-          ) : null}
+          {speechServiceName ? <Text style={styles.warningText}>Service: {speechServiceName}</Text> : null}
         </View>
       ) : null}
 
-      {/* Confidence check for unclear OCR results */}
+      {/* Low confidence warning */}
       {isLowConfidence ? (
         <View style={styles.warningBlock}>
           <Text style={styles.warningTitle}>{t('ocr.lowConfidenceTitle')}</Text>
           <Text style={styles.warningText}>
             {t('ocr.lowConfidenceText', { confidence: ocrConfidence.toFixed(1) })}
           </Text>
-
-          <Pressable style={styles.secondaryButton} onPress={handleAskConfidenceByVoice}>
-            <Text style={styles.secondaryButtonText}>{t('ocr.listenQuestion')}</Text>
-          </Pressable>
-
-          <Pressable style={styles.primaryButton} onPress={handleStartConfidenceConfirmation}>
-            <Text style={styles.primaryButtonText}>{t('ocr.sayYesNo')}</Text>
-          </Pressable>
-
+          <ActionBtn label={t('ocr.listenQuestion')} onPress={handleAskConfidenceByVoice} variant="secondary" small />
+          <ActionBtn label={t('ocr.sayYesNo')} onPress={handleStartConfidenceConfirmation} variant="primary" small />
           {confidenceConfirmed !== null ? (
-            <Text style={styles.confirmStatusText}>
-              {confidenceConfirmed ? t('ocr.confirmedYes') : t('ocr.confirmedNo')}
-            </Text>
+            <View style={[styles.confirmBadge, confidenceConfirmed ? styles.confirmBadgeYes : styles.confirmBadgeNo]}>
+              <Text style={styles.confirmBadgeText}>
+                {confidenceConfirmed ? t('ocr.confirmedYes') : t('ocr.confirmedNo')}
+              </Text>
+            </View>
           ) : null}
         </View>
       ) : null}
 
-      {loadingOCR ? (
-        <View style={styles.block}>
-          <ActivityIndicator size="large" color="#2563EB" />
-          <Text style={styles.text}>{t('ocr.reading')}</Text>
-        </View>
-      ) : null}
-
-      {ocrError ? (
-        <View style={styles.errorBlock}>
-          <Text style={styles.errorText}>{ocrError}</Text>
-        </View>
-      ) : null}
-
-      {/* OCR output section */}
-      <View style={styles.block}>
-        <Text style={styles.sectionTitle}>{t('ocr.extractedText')}</Text>
-        <Text style={styles.confidenceText}>
-          {t('ocr.confidence', { confidence: ocrConfidence.toFixed(1) })}
-        </Text>
+      {/* OCR Text result */}
+      <SectionCard title={t('ocr.extractedText')} icon="📄">
+        {/* Confidence meter */}
+        {ocrConfidence > 0 && (
+          <View style={styles.confidenceBlock}>
+            <View style={styles.confidenceRow}>
+              <Text style={styles.confidenceLabel}>{t('ocr.confidence', { confidence: ocrConfidence.toFixed(1) })}</Text>
+              <View style={[styles.confidenceDot, { backgroundColor: getConfidenceColor() }]} />
+            </View>
+            <View style={styles.confidenceTrack}>
+              <View style={[styles.confidenceFill, { width: `${ocrConfidence}%` as any, backgroundColor: getConfidenceColor() }]} />
+            </View>
+          </View>
+        )}
         <Text style={styles.ocrText}>{ocrText || t('ocr.emptyResult')}</Text>
-      </View>
+      </SectionCard>
 
-      {/* Field matching section */}
-      <View style={styles.block}>
-        <Text style={styles.sectionTitle}>{t('ocr.matchedFields')}</Text>
-        {(Object.keys(fieldLabels) as PersonalFieldKey[]).map((key) => (
-          <Pressable
-            key={key}
-            style={styles.fieldRow}
-            onPress={() => setSelectedField(key)}
-            accessibilityRole="button"
-          >
-            <Text style={styles.fieldLabel}>{fieldLabels[key]}</Text>
-            <Text style={styles.fieldValue}>{finalFilledFields[key] || t('common.empty')}</Text>
-            <Text style={styles.fieldHint}>{t('ocr.fieldHint')}</Text>
-          </Pressable>
-        ))}
-      </View>
+      {/* Matched fields */}
+      <SectionCard title={t('ocr.matchedFields')} icon="🎯">
+        {ocrDone && (
+          <View style={{ marginBottom: Spacing.sm }}>
+            <ActionBtn
+              label={t('ocr.autoFillBtn')}
+              onPress={handleAutoFillAll}
+              variant="primary"
+              small
+            />
+            {filledCount > 0 && (
+              <View style={styles.filledCountBadge}>
+                <Text style={styles.filledCountText}>✓ {filledCount}/4 fields auto-filled from your profile</Text>
+              </View>
+            )}
+          </View>
+        )}
+        {(Object.keys(fieldLabels) as PersonalFieldKey[]).map((key) => {
+          const isFilled = Boolean(finalFilledFields[key]?.trim());
+          return (
+            <Pressable
+              key={key}
+              style={[styles.fieldRow, isFilled && styles.fieldRowFilled]}
+              onPress={() => setSelectedField(key)}
+              accessibilityRole="button"
+            >
+              <Text style={styles.fieldRowIcon}>{FIELD_ICONS[key]}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fieldLabel}>{fieldLabels[key]}</Text>
+                <Text style={[styles.fieldValue, !isFilled && styles.fieldValueEmpty]}>
+                  {finalFilledFields[key] || t('common.empty')}
+                </Text>
+              </View>
+              {isFilled
+                ? <View style={styles.filledBadge}><Text style={styles.filledBadgeText}>✓</Text></View>
+                : <Text style={styles.fieldHint}>{t('ocr.fieldHint')}</Text>
+              }
+            </Pressable>
+          );
+        })}
+      </SectionCard>
 
-      {/* Voice assistant section */}
-      <View style={styles.block}>
-        <Text style={styles.sectionTitle}>{t('ocr.voiceAssistant')}</Text>
-
-        <Pressable style={styles.secondaryButton} onPress={handleSpeakPrompt}>
-          <Text style={styles.secondaryButtonText}>{t('ocr.listenPrompt')}</Text>
-        </Pressable>
-
-        {!listening ? (
-          <Pressable
-            style={[styles.primaryButton, !speechAvailable && styles.buttonDisabled]}
-            onPress={handleStartFieldVoiceInput}
-            disabled={!speechAvailable}
-          >
-            <Text style={styles.primaryButtonText}>{t('ocr.startSpeaking')}</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.secondaryButton} onPress={stopListening}>
-            <Text style={styles.secondaryButtonText}>{t('ocr.stopSpeaking')}</Text>
-          </Pressable>
+      {/* Voice assistant */}
+      <SectionCard title={t('ocr.voiceAssistant')} icon="🎙️">
+        {/* Listening pulse indicator */}
+        {listening && (
+          <View style={styles.listeningBanner}>
+            <Animated.View style={[styles.listeningDot, { transform: [{ scale: pulseAnim }] }]} />
+            <Text style={styles.listeningText}>Listening... speak now</Text>
+          </View>
         )}
 
-        <Pressable style={styles.clearButton} onPress={clearTranscript}>
-          <Text style={styles.clearButtonText}>{t('ocr.clearTranscript')}</Text>
-        </Pressable>
+        <ActionBtn label={t('ocr.listenPrompt')} onPress={handleSpeakPrompt} variant="secondary" small />
 
-        <Text style={styles.transcriptLabel}>{t('ocr.transcriptLabel')}</Text>
-        <Text style={styles.transcriptText}>{transcript || t('ocr.transcriptEmpty')}</Text>
+        {!listening ? (
+          <ActionBtn
+            label={t('ocr.startSpeaking')}
+            onPress={handleStartFieldVoiceInput}
+            disabled={!speechAvailable}
+            variant="primary"
+            small
+          />
+        ) : (
+          <ActionBtn label={t('ocr.stopSpeaking')} onPress={stopListening} variant="ghost" small />
+        )}
 
-        {speechError ? <Text style={styles.errorText}>{speechError}</Text> : null}
-      </View>
+        <ActionBtn label={t('ocr.clearTranscript')} onPress={clearTranscript} variant="ghost" small />
 
-      {/* Step 5 output generation trigger */}
-      <Pressable
-        style={[styles.primaryButton, (!ocrText.trim() || loadingOCR) && styles.buttonDisabled]}
+        {/* Transcript display */}
+        <View style={styles.transcriptBox}>
+          <Text style={styles.transcriptLabel}>{t('ocr.transcriptLabel')}</Text>
+          <Text style={styles.transcriptText}>{transcript || t('ocr.transcriptEmpty')}</Text>
+        </View>
+
+        {speechError ? (
+          <Text style={styles.speechErrorText}>⚠️  {speechError}</Text>
+        ) : null}
+      </SectionCard>
+
+      {/* Generate preview button */}
+      <ActionBtn
+        label={t('ocr.generatePreview')}
         onPress={handleGoToFilledPreview}
         disabled={!ocrText.trim() || loadingOCR}
-      >
-        <Text style={styles.primaryButtonText}>{t('ocr.generatePreview')}</Text>
-      </Pressable>
+      />
 
-      {/* Explain Field modal */}
+      {/* Field explanation modal */}
       <Modal
         visible={selectedField !== null}
         transparent
@@ -406,24 +532,26 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {selectedField ? fieldLabels[selectedField] : ''}
-            </Text>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalIcon}>{selectedField ? FIELD_ICONS[selectedField] : ''}</Text>
+              <Text style={styles.modalTitle}>{selectedField ? fieldLabels[selectedField] : ''}</Text>
+            </View>
 
             <Text style={styles.modalDescription}>
               {selectedField ? getFieldExplanation(selectedField, language) : ''}
             </Text>
 
-            <Pressable style={styles.primaryButton} onPress={handleSpeakFieldExplanation}>
-              <Text style={styles.primaryButtonText}>{t('ocr.voiceExplain')}</Text>
-            </Pressable>
+            {selectedField && finalFilledFields[selectedField] ? (
+              <View style={styles.modalValueBlock}>
+                <Text style={styles.modalValueLabel}>Current value:</Text>
+                <Text style={styles.modalValue}>{finalFilledFields[selectedField]}</Text>
+              </View>
+            ) : null}
 
-            <Pressable
-              style={styles.secondaryButton}
-              onPress={() => setSelectedField(null)}
-            >
-              <Text style={styles.secondaryButtonText}>{t('ocr.close')}</Text>
-            </Pressable>
+            <ActionBtn label={t('ocr.voiceExplain')} onPress={handleSpeakFieldExplanation} />
+            <ActionBtn label={t('ocr.close')} onPress={() => setSelectedField(null)} variant="secondary" />
           </View>
         </View>
       </Modal>
@@ -434,191 +562,316 @@ export default function OCRResultScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.bg,
   },
   contentContainer: {
-    padding: 16,
-    paddingBottom: 32,
+    padding: Spacing.base,
+    paddingBottom: Spacing['2xl'],
   },
   heading: {
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 6,
+    fontSize: Typography['2xl'],
+    fontWeight: Typography.extrabold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
   },
   helperText: {
-    fontSize: 18,
-    color: '#334155',
-    lineHeight: 26,
-    marginBottom: 10,
+    fontSize: Typography.md,
+    color: Colors.textSecondary,
+    lineHeight: 24,
+    marginBottom: Spacing.md,
   },
-  block: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
+  noImageBanner: {
+    backgroundColor: Colors.warningBg,
+    borderColor: Colors.warning,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    padding: 14,
-    marginBottom: 14,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  noImageText: {
+    color: Colors.warningLight,
+    fontSize: Typography.sm,
+    fontWeight: Typography.medium,
+  },
+  loadingBlock: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  loadingText: {
+    fontSize: Typography.base,
+    color: Colors.textSecondary,
+    marginTop: Spacing.xs,
   },
   errorBlock: {
-    backgroundColor: '#FEE2E2',
-    borderColor: '#FCA5A5',
+    backgroundColor: Colors.dangerBg,
+    borderColor: Colors.danger,
     borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  warningBlock: {
-    backgroundColor: '#FEF3C7',
-    borderColor: '#F59E0B',
-    borderWidth: 1,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-  },
-  warningTitle: {
-    color: '#92400E',
-    fontSize: 21,
-    fontWeight: '700',
-    marginBottom: 6,
-  },
-  warningText: {
-    color: '#78350F',
-    fontSize: 17,
-    lineHeight: 24,
-    marginBottom: 10,
-  },
-  confirmStatusText: {
-    marginTop: 6,
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#78350F',
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
   errorText: {
-    color: '#991B1B',
-    fontSize: 16,
-    fontWeight: '600',
+    color: Colors.dangerLight,
+    fontSize: Typography.base,
+    fontWeight: Typography.medium,
     lineHeight: 22,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#0F172A',
+  warningBlock: {
+    backgroundColor: Colors.warningBg,
+    borderColor: Colors.warning,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
   },
-  confidenceText: {
-    fontSize: 16,
-    color: '#334155',
-    marginBottom: 8,
+  warningTitle: {
+    color: Colors.warning,
+    fontSize: Typography.md,
+    fontWeight: Typography.bold,
+    marginBottom: Spacing.xs,
+  },
+  warningText: {
+    color: Colors.warningLight,
+    fontSize: Typography.sm,
+    lineHeight: 20,
+    marginBottom: Spacing.xs,
+  },
+  confirmBadge: {
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginTop: Spacing.xs,
+  },
+  confirmBadgeYes: {
+    backgroundColor: Colors.successBg,
+    borderColor: Colors.success,
+    borderWidth: 1,
+  },
+  confirmBadgeNo: {
+    backgroundColor: Colors.dangerBg,
+    borderColor: Colors.danger,
+    borderWidth: 1,
+  },
+  confirmBadgeText: {
+    color: Colors.textPrimary,
+    fontSize: Typography.base,
+    fontWeight: Typography.bold,
+    textAlign: 'center',
+  },
+  confidenceBlock: {
+    marginBottom: Spacing.md,
+  },
+  confidenceRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.xs,
+  },
+  confidenceLabel: {
+    fontSize: Typography.sm,
+    color: Colors.textSecondary,
+  },
+  confidenceDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  confidenceTrack: {
+    height: 5,
+    backgroundColor: Colors.border,
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+  },
+  confidenceFill: {
+    height: '100%',
+    borderRadius: Radius.full,
   },
   ocrText: {
-    fontSize: 18,
-    color: '#0F172A',
-    lineHeight: 28,
+    fontSize: Typography.base,
+    color: Colors.textSecondary,
+    lineHeight: 26,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  filledCountBadge: {
+    backgroundColor: Colors.successBg,
+    borderColor: Colors.success,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingVertical: 4,
+    paddingHorizontal: Spacing.sm,
+    alignSelf: 'flex-start',
+    marginBottom: Spacing.sm,
+  },
+  filledCountText: {
+    color: Colors.success,
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
   },
   fieldRow: {
-    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.bgElevated,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    padding: 10,
-    marginBottom: 10,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  fieldRowFilled: {
+    borderColor: Colors.success,
+    backgroundColor: Colors.successBg,
+  },
+  fieldRowIcon: {
+    fontSize: 20,
+    width: 28,
+    textAlign: 'center',
   },
   fieldLabel: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#334155',
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+    color: Colors.textSecondary,
   },
   fieldValue: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#111827',
+    fontSize: Typography.md,
+    fontWeight: Typography.semibold,
+    color: Colors.textPrimary,
+    marginTop: 2,
+  },
+  fieldValueEmpty: {
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    fontWeight: Typography.normal,
+    fontSize: Typography.sm,
+  },
+  filledBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: Colors.success,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filledBadgeText: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: Typography.bold,
   },
   fieldHint: {
-    marginTop: 4,
-    fontSize: 14,
-    color: '#64748B',
+    fontSize: Typography.xs,
+    color: Colors.textMuted,
+    maxWidth: 80,
+    textAlign: 'right',
   },
-  primaryButton: {
-    backgroundColor: '#1D4ED8',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 10,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    textAlign: 'center',
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  secondaryButton: {
-    backgroundColor: '#E2E8F0',
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 10,
-  },
-  secondaryButtonText: {
-    color: '#0F172A',
-    textAlign: 'center',
-    fontSize: 21,
-    fontWeight: '600',
-  },
-  clearButton: {
-    backgroundColor: '#F1F5F9',
-    borderColor: '#CBD5E1',
+  listeningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.primaryMuted,
+    borderColor: Colors.primary,
     borderWidth: 1,
-    paddingVertical: 10,
-    borderRadius: 10,
-    marginBottom: 10,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.sm,
   },
-  clearButtonText: {
-    textAlign: 'center',
-    fontSize: 16,
-    color: '#334155',
-    fontWeight: '600',
+  listeningDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: Colors.danger,
+  },
+  listeningText: {
+    fontSize: Typography.base,
+    color: Colors.primaryLight,
+    fontWeight: Typography.semibold,
+  },
+  transcriptBox: {
+    backgroundColor: Colors.bgInput,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    minHeight: 70,
   },
   transcriptLabel: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 4,
-    color: '#334155',
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: Spacing.xs,
   },
   transcriptText: {
-    fontSize: 20,
-    color: '#111827',
-    lineHeight: 30,
-    marginBottom: 8,
+    fontSize: Typography.base,
+    color: Colors.textPrimary,
+    lineHeight: 24,
   },
-  text: {
-    marginTop: 10,
-    fontSize: 18,
-    lineHeight: 26,
+  speechErrorText: {
+    fontSize: Typography.sm,
+    color: Colors.dangerLight,
+    marginTop: Spacing.xs,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalCard: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: 18,
+    backgroundColor: Colors.bgElevated,
+    borderTopLeftRadius: Radius['2xl'],
+    borderTopRightRadius: Radius['2xl'],
+    padding: Spacing.base,
+    paddingTop: Spacing.sm,
     borderTopWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: Colors.border,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.border,
+    alignSelf: 'center',
+    marginBottom: Spacing.md,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  modalIcon: {
+    fontSize: 28,
   },
   modalTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginBottom: 8,
+    fontSize: Typography['2xl'],
+    fontWeight: Typography.extrabold,
+    color: Colors.textPrimary,
   },
   modalDescription: {
-    fontSize: 20,
-    lineHeight: 30,
-    color: '#334155',
-    marginBottom: 12,
+    fontSize: Typography.md,
+    lineHeight: 28,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+  },
+  modalValueBlock: {
+    backgroundColor: Colors.bgInput,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  modalValueLabel: {
+    fontSize: Typography.xs,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  },
+  modalValue: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
   },
 });

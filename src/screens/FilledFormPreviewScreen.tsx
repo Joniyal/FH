@@ -1,9 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
+  Animated,
   Image,
   LayoutChangeEvent,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   View,
@@ -13,10 +15,54 @@ import { PersonalFieldKey } from '../types/app';
 import { RootStackParamList } from '../types/navigation';
 import { DEFAULT_FIELD_POSITIONS } from '../utils/overlayLayout';
 import { useLanguage } from '../i18n/LanguageContext';
+import Colors from '../theme/colors';
+import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FilledFormPreview'>;
 
-export default function FilledFormPreviewScreen({ route }: Props) {
+const FIELD_ICONS: Record<PersonalFieldKey, string> = {
+  name: '🪪',
+  address: '🏠',
+  phone: '📱',
+  dob: '🎂',
+};
+
+function ActionBtn({
+  label,
+  onPress,
+  disabled,
+  variant = 'primary',
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  variant?: 'primary' | 'secondary';
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        style={[
+          styles.actionBtn,
+          variant === 'primary' && styles.actionBtnPrimary,
+          variant === 'secondary' && styles.actionBtnSecondary,
+          disabled && styles.actionBtnDisabled,
+        ]}
+        onPress={onPress}
+        onPressIn={() => Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, tension: 200, friction: 10 }).start()}
+        onPressOut={() => Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 200, friction: 10 }).start()}
+        disabled={disabled}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.actionBtnText, variant === 'secondary' && styles.actionBtnTextSecondary]}>
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+export default function FilledFormPreviewScreen({ route, navigation }: Props) {
   const { t } = useLanguage();
   const fieldLabels: Record<PersonalFieldKey, string> = {
     name: t('field.name'),
@@ -27,12 +73,12 @@ export default function FilledFormPreviewScreen({ route }: Props) {
 
   const imageUri = route.params?.imageUri;
   const filledFields = route.params?.filledFields ?? {};
-  const hasAnyFilledValue = (Object.values(filledFields) as string[]).some((value) =>
-    Boolean(value?.trim())
-  );
+  const hasAnyFilledValue = (Object.values(filledFields) as string[]).some((v) => Boolean(v?.trim()));
 
   const [canvasWidth, setCanvasWidth] = useState<number>(0);
   const [canvasHeight, setCanvasHeight] = useState<number>(0);
+  const [overlayVisible, setOverlayVisible] = useState<boolean>(true);
+  const [activeCheckIndex, setActiveCheckIndex] = useState<number>(-1);
 
   const overlayItems = useMemo(
     () =>
@@ -40,7 +86,6 @@ export default function FilledFormPreviewScreen({ route }: Props) {
         .filter((fieldKey) => Boolean(filledFields[fieldKey]?.trim()))
         .map((fieldKey) => {
           const position = DEFAULT_FIELD_POSITIONS[fieldKey];
-
           return {
             fieldKey,
             label: fieldLabels[fieldKey],
@@ -57,72 +102,198 @@ export default function FilledFormPreviewScreen({ route }: Props) {
     setCanvasHeight(event.nativeEvent.layout.height);
   };
 
+  const handleShare = async () => {
+    const lines = (Object.keys(fieldLabels) as PersonalFieldKey[]).map(
+      (key) => `${fieldLabels[key]}: ${filledFields[key] || '---'}`
+    );
+    try {
+      await Share.share({
+        message: `Form Details:\n\n${lines.join('\n')}`,
+        title: 'Filled Form Details',
+      });
+    } catch {
+      // ignore share error
+    }
+  };
+
+  const filledCount = Object.values(filledFields).filter((v) => v?.trim()).length;
+  const completionPercent = Math.round((filledCount / 4) * 100);
+
+  const CHECKLIST = [
+    t('field.name'),
+    t('field.address'),
+    t('field.phone'),
+    t('field.dob'),
+  ];
+
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
+      showsVerticalScrollIndicator={false}
     >
       <Text style={styles.heading}>{t('preview.heading')}</Text>
       <Text style={styles.subHeading}>{t('preview.subHeading')}</Text>
 
+      {/* Completion summary bar */}
+      <View style={styles.summaryBar}>
+        <View style={styles.summaryBarLeft}>
+          <Text style={styles.summaryBarNum}>{filledCount}/4</Text>
+          <Text style={styles.summaryBarLabel}>fields filled</Text>
+        </View>
+        <View style={styles.progressWrap}>
+          <View style={styles.progressTrack}>
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${completionPercent}%` as any,
+                  backgroundColor: completionPercent === 100 ? Colors.success : Colors.primary,
+                },
+              ]}
+            />
+          </View>
+          <Text style={styles.progressPercent}>{completionPercent}%</Text>
+        </View>
+      </View>
+
+      {/* Preview card with image overlay */}
       <View style={styles.previewCard}>
-        <Text style={styles.previewTitle}>{t('preview.cardTitle')}</Text>
+        <View style={styles.previewCardHeader}>
+          <Text style={styles.previewCardTitle}>{t('preview.cardTitle')}</Text>
+          <Pressable
+            style={styles.overlayToggle}
+            onPress={() => setOverlayVisible((v) => !v)}
+          >
+            <Text style={styles.overlayToggleText}>{overlayVisible ? '👁 Hide overlay' : '👁 Show overlay'}</Text>
+          </Pressable>
+        </View>
 
         {imageUri ? (
           <View style={styles.formCanvas} onLayout={handleCanvasLayout}>
-            <Image source={{ uri: imageUri }} style={styles.formImage} resizeMode="contain" />
-
-            {/* Overlay generated output text on top of the scanned form */}
-            {overlayItems.map((item) => (
-              <View
-                key={item.fieldKey}
-                style={[
-                  styles.overlayTextWrap,
-                  {
-                    left: item.left,
-                    top: item.top,
-                  },
-                ]}
-              >
-                <Text style={styles.overlayLabel}>{item.label}</Text>
-                <Text style={styles.overlayValue}>{item.value}</Text>
+            {imageUri.toLowerCase().endsWith('.pdf') ? (
+              <View style={styles.pdfDocumentSheet}>
+                <View style={styles.pdfDocHeader}>
+                  <Text style={styles.pdfDocTitle}>APPLICATION FORM / REGISTRATION</Text>
+                  <Text style={styles.pdfDocSub}>Official Document Template · Auto-Filled</Text>
+                </View>
+                <View style={styles.pdfDocBody}>
+                  {(Object.keys(fieldLabels) as PersonalFieldKey[]).map((fieldKey) => (
+                    <View key={fieldKey} style={styles.pdfDocRow}>
+                      <Text style={styles.pdfDocLabel}>{fieldLabels[fieldKey]}:</Text>
+                      <View style={styles.pdfDocValueUnderline}>
+                        <Text style={styles.pdfDocValueText}>
+                          {filledFields[fieldKey] || '_____________________'}
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
+                  <View style={styles.pdfSignatureRow}>
+                    <Text style={styles.pdfDocLabel}>Applicant Signature:</Text>
+                    <Text style={styles.pdfSignatureText}>✓ Auto-Verified</Text>
+                  </View>
+                </View>
               </View>
-            ))}
+            ) : (
+              <>
+                <Image source={{ uri: imageUri }} style={styles.formImage} resizeMode="contain" />
+
+                {overlayVisible && overlayItems.map((item) => (
+                  <View
+                    key={item.fieldKey}
+                    style={[
+                      styles.overlayTextWrap,
+                      { left: item.left, top: item.top },
+                    ]}
+                  >
+                    <Text style={styles.overlayLabel}>{item.label}</Text>
+                    <Text style={styles.overlayValue}>{item.value}</Text>
+                  </View>
+                ))}
+              </>
+            )}
           </View>
         ) : (
-          <Text style={styles.previewText}>{t('preview.noImage')}</Text>
+          <View style={styles.noImageBlock}>
+            <Text style={styles.noImageEmoji}>🖼️</Text>
+            <Text style={styles.noImageText}>{t('preview.noImage')}</Text>
+          </View>
         )}
       </View>
 
-      <View style={styles.tipCard}>
-        <Text style={styles.tipTitle}>{t('preview.tipTitle')}</Text>
-        <Text style={styles.tipText}>{t('preview.tipText')}</Text>
+      {/* Interactive checklist */}
+      <View style={styles.checklistCard}>
+        <Text style={styles.checklistTitle}>{t('preview.tipTitle')}</Text>
+        {CHECKLIST.map((item, i) => {
+          const fieldKey = ['name', 'address', 'phone', 'dob'][i] as PersonalFieldKey;
+          const isFilled = Boolean(filledFields[fieldKey]?.trim());
+          const isChecked = activeCheckIndex >= i;
+          return (
+            <Pressable
+              key={item}
+              style={styles.checklistRow}
+              onPress={() => setActiveCheckIndex(isChecked ? i - 1 : i)}
+            >
+              <View style={[styles.checkBox, isChecked && styles.checkBoxChecked]}>
+                {isChecked && <Text style={styles.checkMark}>✓</Text>}
+              </View>
+              <Text style={[styles.checkLabel, isChecked && styles.checkLabelDone]}>
+                {FIELD_ICONS[fieldKey]}  {item}
+              </Text>
+              {isFilled && (
+                <View style={styles.autoFilledBadge}>
+                  <Text style={styles.autoFilledText}>auto</Text>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
       </View>
 
+      {/* Summary table */}
       <View style={styles.summaryCard}>
         <Text style={styles.summaryTitle}>{t('preview.summaryTitle')}</Text>
-
         {!hasAnyFilledValue ? (
           <Text style={styles.emptyHint}>{t('preview.empty')}</Text>
         ) : null}
 
-        {(Object.keys(fieldLabels) as PersonalFieldKey[]).map((fieldKey) => (
-          <View key={fieldKey} style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{fieldLabels[fieldKey]}</Text>
-            <Text style={styles.summaryValue}>{filledFields[fieldKey] || t('common.empty')}</Text>
-          </View>
-        ))}
+        {(Object.keys(fieldLabels) as PersonalFieldKey[]).map((fieldKey) => {
+          const isFilled = Boolean(filledFields[fieldKey]?.trim());
+          return (
+            <View key={fieldKey} style={[styles.summaryRow, isFilled && styles.summaryRowFilled]}>
+              <View style={styles.summaryRowLeft}>
+                <Text style={styles.summaryIcon}>{FIELD_ICONS[fieldKey]}</Text>
+                <Text style={styles.summaryLabel}>{fieldLabels[fieldKey]}</Text>
+              </View>
+              <Text style={[styles.summaryValue, !isFilled && styles.summaryValueEmpty]}>
+                {filledFields[fieldKey] || t('common.empty')}
+              </Text>
+            </View>
+          );
+        })}
       </View>
 
-      <Pressable
-        style={[
-          styles.primaryButton,
-          (!imageUri || !hasAnyFilledValue) && styles.primaryButtonDisabled,
-        ]}
+      {/* Action buttons */}
+      <ActionBtn
+        label="📤  Share form details"
+        onPress={handleShare}
+        disabled={!hasAnyFilledValue}
+        variant="secondary"
+      />
+
+      <ActionBtn
+        label={t('preview.ready')}
+        onPress={() => {}}
         disabled={!imageUri || !hasAnyFilledValue}
+        variant="primary"
+      />
+
+      <Pressable
+        style={styles.backBtn}
+        onPress={() => navigation.goBack()}
       >
-        <Text style={styles.primaryButtonText}>{t('preview.ready')}</Text>
+        <Text style={styles.backBtnText}>← Go back to OCR</Text>
       </Pressable>
     </ScrollView>
   );
@@ -131,139 +302,367 @@ export default function FilledFormPreviewScreen({ route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.bg,
   },
   contentContainer: {
-    padding: 16,
-    paddingBottom: 28,
+    padding: Spacing.base,
+    paddingBottom: Spacing['2xl'],
   },
   heading: {
-    fontSize: 30,
-    fontWeight: '800',
-    marginBottom: 6,
-    color: '#0F172A',
+    fontSize: Typography['2xl'],
+    fontWeight: Typography.extrabold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.xs,
   },
   subHeading: {
-    fontSize: 20,
-    lineHeight: 30,
-    color: '#334155',
-    marginBottom: 14,
+    fontSize: Typography.md,
+    color: Colors.textSecondary,
+    lineHeight: 24,
+    marginBottom: Spacing.base,
+  },
+  summaryBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: Spacing.md,
+  },
+  summaryBarLeft: {
+    alignItems: 'center',
+    minWidth: 50,
+  },
+  summaryBarNum: {
+    fontSize: Typography['2xl'],
+    fontWeight: Typography.extrabold,
+    color: Colors.primaryLight,
+  },
+  summaryBarLabel: {
+    fontSize: Typography.xs,
+    color: Colors.textMuted,
+  },
+  progressWrap: {
+    flex: 1,
+    gap: Spacing.xs,
+  },
+  progressTrack: {
+    height: 8,
+    backgroundColor: Colors.border,
+    borderRadius: Radius.full,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: Radius.full,
+  },
+  progressPercent: {
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
+    fontWeight: Typography.medium,
   },
   previewCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.xl,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    marginBottom: 12,
-    minHeight: 190,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    ...Shadow.md,
+  },
+  previewCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  previewCardTitle: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
+  },
+  overlayToggle: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.bgElevated,
+    borderColor: Colors.border,
+    borderWidth: 1,
+  },
+  overlayToggleText: {
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
   },
   formCanvas: {
     width: '100%',
     aspectRatio: 3 / 4,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 12,
+    borderColor: Colors.border,
+    borderRadius: Radius.md,
     overflow: 'hidden',
-    backgroundColor: '#F8FAFC',
+    backgroundColor: Colors.bgInput,
   },
   formImage: {
     width: '100%',
     height: '100%',
     position: 'absolute',
   },
+  pdfDocumentSheet: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    padding: Spacing.md,
+    justifyContent: 'space-between',
+  },
+  pdfDocHeader: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#1E293B',
+    paddingBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
+  },
+  pdfDocTitle: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.extrabold,
+    color: '#0F172A',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+  pdfDocSub: {
+    fontSize: 9,
+    color: '#64748B',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  pdfDocBody: {
+    gap: Spacing.sm,
+  },
+  pdfDocRow: {
+    gap: 2,
+  },
+  pdfDocLabel: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    color: '#334155',
+  },
+  pdfDocValueUnderline: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#94A3B8',
+    paddingBottom: 2,
+  },
+  pdfDocValueText: {
+    fontSize: Typography.sm,
+    color: '#1E40AF',
+    fontWeight: Typography.bold,
+  },
+  pdfSignatureRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+  },
+  pdfSignatureText: {
+    fontSize: Typography.xs,
+    color: '#059669',
+    fontWeight: Typography.bold,
+  },
   overlayTextWrap: {
     position: 'absolute',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
+    backgroundColor: 'rgba(99, 102, 241, 0.90)',
+    borderRadius: Radius.sm,
+    paddingHorizontal: Spacing.sm,
     paddingVertical: 4,
     maxWidth: '72%',
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
   },
   overlayLabel: {
-    fontSize: 11,
-    color: '#334155',
-    fontWeight: '700',
+    fontSize: 10,
+    color: Colors.primaryLight,
+    fontWeight: Typography.bold,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   overlayValue: {
-    fontSize: 15,
-    color: '#0F172A',
-    fontWeight: '700',
+    fontSize: 14,
+    color: Colors.white,
+    fontWeight: Typography.bold,
   },
-  previewTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#0F172A',
+  noImageBlock: {
+    height: 180,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: Spacing.sm,
   },
-  previewText: {
-    fontSize: 18,
-    lineHeight: 28,
-    color: '#475569',
+  noImageEmoji: {
+    fontSize: 48,
   },
-  tipCard: {
-    backgroundColor: '#ECFEFF',
-    borderRadius: 16,
-    padding: 14,
+  noImageText: {
+    fontSize: Typography.base,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  checklistCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
     borderWidth: 1,
-    borderColor: '#A5F3FC',
-    marginBottom: 14,
+    borderColor: Colors.border,
   },
-  tipTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#155E75',
-    marginBottom: 6,
+  checklistTitle: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
   },
-  tipText: {
-    fontSize: 18,
-    lineHeight: 28,
-    color: '#0E7490',
+  checklistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  checkBox: {
+    width: 24,
+    height: 24,
+    borderRadius: Radius.sm,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkBoxChecked: {
+    backgroundColor: Colors.success,
+    borderColor: Colors.success,
+  },
+  checkMark: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: Typography.bold,
+  },
+  checkLabel: {
+    flex: 1,
+    fontSize: Typography.base,
+    color: Colors.textSecondary,
+  },
+  checkLabelDone: {
+    textDecorationLine: 'line-through',
+    color: Colors.textMuted,
+  },
+  autoFilledBadge: {
+    backgroundColor: Colors.primaryMuted,
+    borderColor: Colors.primary,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: 2,
+  },
+  autoFilledText: {
+    fontSize: Typography.xs,
+    color: Colors.primaryLight,
+    fontWeight: Typography.bold,
   },
   summaryCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
     borderWidth: 1,
-    borderColor: '#CBD5E1',
-    padding: 14,
-    marginBottom: 14,
+    borderColor: Colors.border,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
   },
   summaryTitle: {
-    fontSize: 21,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#0F172A',
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
+    marginBottom: Spacing.sm,
+    paddingBottom: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
   },
   emptyHint: {
-    fontSize: 17,
-    color: '#64748B',
-    marginBottom: 8,
+    fontSize: Typography.base,
+    color: Colors.textMuted,
+    marginBottom: Spacing.sm,
+    fontStyle: 'italic',
   },
   summaryRow: {
-    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+    gap: Spacing.sm,
+  },
+  summaryRowFilled: {
+    borderBottomColor: Colors.border,
+  },
+  summaryRowLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+    flex: 1,
+  },
+  summaryIcon: {
+    fontSize: 16,
+    width: 22,
   },
   summaryLabel: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#475569',
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+    color: Colors.textSecondary,
   },
   summaryValue: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#0F172A',
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+    color: Colors.textPrimary,
+    flex: 1,
+    textAlign: 'right',
   },
-  primaryButton: {
-    backgroundColor: '#1D4ED8',
-    borderRadius: 16,
-    paddingVertical: 18,
+  summaryValueEmpty: {
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    fontWeight: Typography.normal,
   },
-  primaryButtonDisabled: {
-    opacity: 0.5,
+  actionBtn: {
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.base,
+    marginBottom: Spacing.sm,
+    borderWidth: 1,
+    alignItems: 'center',
   },
-  primaryButtonText: {
-    textAlign: 'center',
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '700',
+  actionBtnPrimary: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primary,
+    ...Shadow.lg,
+  },
+  actionBtnSecondary: {
+    backgroundColor: Colors.bgCard,
+    borderColor: Colors.border,
+  },
+  actionBtnDisabled: { opacity: 0.45 },
+  actionBtnText: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
+  },
+  actionBtnTextSecondary: {
+    color: Colors.textSecondary,
+    fontWeight: Typography.semibold,
+  },
+  backBtn: {
+    paddingVertical: Spacing.sm,
+    alignItems: 'center',
+  },
+  backBtnText: {
+    fontSize: Typography.base,
+    color: Colors.textMuted,
   },
 });

@@ -1,46 +1,72 @@
-import React from 'react';
-import { Alert, Pressable, StyleSheet, Text } from 'react-native';
+import React, { useRef } from 'react';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import Colors from '../theme/colors';
+import { Radius, Spacing, Typography } from '../theme/tokens';
 import { useLanguage } from '../i18n/LanguageContext';
 
 export default function HeaderLanguageMenu() {
-  const { language, setLanguage, t } = useLanguage();
+  const { language, setLanguage } = useLanguage();
+  const scale = useRef(new Animated.Value(1)).current;
 
-  const openMenu = () => {
-    Alert.alert(t('menu.selectLanguage'), '', [
-      {
-        text: `${language === 'en' ? '✓ ' : ''}${t('menu.english')}`,
-        onPress: () => {
-          void setLanguage('en');
-        },
-      },
-      {
-        text: `${language === 'ml' ? '✓ ' : ''}${t('menu.malayalam')}`,
-        onPress: () => {
-          void setLanguage('ml');
-        },
-      },
-      {
-        text: t('menu.cancel'),
-        style: 'cancel',
-      },
-    ]);
+  const handlePressIn = () => {
+    Animated.spring(scale, { toValue: 0.9, useNativeDriver: true, tension: 300, friction: 10 }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, tension: 300, friction: 10 }).start();
+  };
+
+  const toggle = () => {
+    const next = language === 'en' ? 'ml' : 'en';
+    void setLanguage(next);
   };
 
   return (
-    <Pressable onPress={openMenu} style={styles.button} accessibilityRole="button">
-      <Text style={styles.buttonText}>⋮</Text>
-    </Pressable>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        onPress={toggle}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={styles.pill}
+        accessibilityRole="button"
+        accessibilityLabel="Switch language"
+      >
+        <View style={styles.row}>
+          <Text style={[styles.label, language === 'en' && styles.active]}>EN</Text>
+          <Text style={styles.divider}>|</Text>
+          <Text style={[styles.label, language === 'ml' && styles.active]}>മ</Text>
+        </View>
+      </Pressable>
+    </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
-  button: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+  pill: {
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: Radius.full,
+    paddingVertical: 5,
+    paddingHorizontal: Spacing.md,
+    marginRight: Spacing.xs,
   },
-  buttonText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#0F172A',
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  label: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    color: Colors.textMuted,
+    lineHeight: 18,
+  },
+  active: {
+    color: Colors.primaryLight,
+    fontWeight: Typography.bold,
+  },
+  divider: {
+    color: Colors.border,
+    fontSize: Typography.xs,
   },
 });

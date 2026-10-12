@@ -1,5 +1,5 @@
 import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import HomeScreen from './src/screens/HomeScreen';
 import ScanFormScreen from './src/screens/ScanFormScreen';
@@ -9,33 +9,61 @@ import FilledFormPreviewScreen from './src/screens/FilledFormPreviewScreen';
 import { RootStackParamList } from './src/types/navigation';
 import { LanguageProvider, useLanguage } from './src/i18n/LanguageContext';
 import HeaderLanguageMenu from './src/components/HeaderLanguageMenu';
+import Colors from './src/theme/colors';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+
+// Custom dark navigation theme extending the default DarkTheme
+const FHDarkTheme = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: Colors.bg,
+    card: Colors.bgCard,
+    text: Colors.textPrimary,
+    border: Colors.border,
+    primary: Colors.primary,
+    notification: Colors.primary,
+  },
+};
 
 function AppNavigator() {
   const { t } = useLanguage();
 
   return (
-    <NavigationContainer>
-      <StatusBar style="dark" />
+    <NavigationContainer theme={FHDarkTheme}>
+      <StatusBar style="light" />
 
-      {/* Main app navigation */}
       <Stack.Navigator
         initialRouteName="Home"
         screenOptions={{
           headerTitleAlign: 'center',
-          headerStyle: { backgroundColor: '#E0E7FF' },
+          headerStyle: {
+            backgroundColor: Colors.bgCard,
+          },
+          headerTintColor: Colors.textPrimary,
           headerRight: () => <HeaderLanguageMenu />,
           headerTitleStyle: {
-            fontSize: 22,
+            fontSize: 17,
             fontWeight: '700',
+            color: Colors.textPrimary,
           },
+          headerShadowVisible: false,
+          contentStyle: {
+            backgroundColor: Colors.bg,
+          },
+          // Smooth slide animation
+          animation: 'slide_from_right',
         }}
       >
         <Stack.Screen
           name="Home"
           component={HomeScreen}
-          options={{ title: t('screen.homeTitle') }}
+          options={{
+            title: t('screen.homeTitle'),
+            // Home screen has no back button
+            headerBackVisible: false,
+          }}
         />
         <Stack.Screen
           name="ScanForm"
