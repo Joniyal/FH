@@ -13,9 +13,9 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build:dev": "eas build --profile development --platform android",
-    "build:preview": "eas build --profile preview --platform android",
-    "build:prod": "eas build --profile production --platform android"
+    "build:dev": "npx --yes eas-cli build --profile development --platform android",
+    "build:preview": "npx --yes eas-cli build --profile preview --platform android",
+    "build:prod": "npx --yes eas-cli build --profile production --platform android"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -31,7 +31,8 @@
     "react": "19.2.0",
     "react-native": "0.83.2",
     "react-native-safe-area-context": "~5.6.2",
-    "react-native-screens": "~4.23.0"
+    "react-native-screens": "~4.23.0",
+    "tslib": "^2.8.1"
   },
   "devDependencies": {
     "@types/jest": "^30.0.0",
