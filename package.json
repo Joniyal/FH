@@ -4,10 +4,16 @@
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
+    "tunnel": "expo start --tunnel",
+    "dev": "expo start --dev-client",
+    "dev:tunnel": "expo start --dev-client --tunnel",
     "test": "jest",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "build:dev": "eas build --profile development --platform android",
+    "build:preview": "eas build --profile preview --platform android",
+    "build:prod": "eas build --profile production --platform android"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",

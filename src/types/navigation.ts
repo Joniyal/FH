@@ -15,4 +15,5 @@ export type RootStackParamList = {
         filledFields?: Partial<Record<PersonalFieldKey, string>>;
       }
     | undefined;
+  FormHistory: undefined;
 };

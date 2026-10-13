@@ -60,7 +60,11 @@ export default function LargeActionButton({
         accessibilityLabel={label}
       >
         <View style={styles.content}>
-          {icon ? <Text style={styles.icon}>{icon}</Text> : null}
+          {icon ? (
+            <View style={[styles.iconWrap, isPrimary && styles.iconWrapPrimary]}>
+              <Text style={styles.icon}>{icon}</Text>
+            </View>
+          ) : null}
           <View style={styles.textBlock}>
             <Text style={[
               styles.text,
@@ -100,8 +104,8 @@ const styles = StyleSheet.create({
   },
   buttonPrimary: {
     backgroundColor: Colors.primaryDark,
-    borderColor: Colors.primary,
-    ...Shadow.lg,
+    borderColor: Colors.borderAccent,
+    ...Shadow.glow,
   },
   buttonSecondary: {
     backgroundColor: Colors.bgCard,
@@ -117,9 +121,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.sm,
   },
+  iconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconWrapPrimary: {
+    backgroundColor: Colors.primaryMuted,
+  },
   icon: {
-    fontSize: 28,
-    lineHeight: 36,
+    fontSize: 22,
+    lineHeight: 28,
   },
   textBlock: {
     flex: 1,

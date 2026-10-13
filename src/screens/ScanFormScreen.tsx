@@ -1,12 +1,10 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
-  Dimensions,
   Easing,
   Image,
   Linking,
-  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -40,7 +38,7 @@ export default function ScanFormScreen({ navigation }: Props) {
   const [screenError, setScreenError] = useState<string>('');
   const [showSettingsButton, setShowSettingsButton] = useState<boolean>(false);
 
-  // Adobe Scan feature states
+  // Camera feature states
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const [showGrid, setShowGrid] = useState<boolean>(false);
   const [autoCapture, setAutoCapture] = useState<boolean>(false);
@@ -54,20 +52,16 @@ export default function ScanFormScreen({ navigation }: Props) {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const shutterScale = useRef(new Animated.Value(1)).current;
   const autoCaptureCountdown = useRef<NodeJS.Timeout | null>(null);
+  const animMountedRef = useRef(true);
 
-  // Corner pin offsets for Adobe Scan perspective crop simulation
-  const [cornerPins, setCornerPins] = useState({
-    tl: { x: 12, y: 12 },
-    tr: { x: -12, y: 12 },
-    bl: { x: 12, y: -12 },
-    br: { x: -12, y: -12 },
-  });
-
-  // Animated scanner laser beam loop
+  // Animated scanner laser beam loop — only when camera is visible
   useEffect(() => {
-    let isMounted = true;
+    animMountedRef.current = true;
+
+    if (!showCamera) return;
+
     const loopAnimation = () => {
-      if (!isMounted) return;
+      if (!animMountedRef.current) return;
       Animated.sequence([
         Animated.timing(scanBeamAnim, {
           toValue: 1,
@@ -82,48 +76,45 @@ export default function ScanFormScreen({ navigation }: Props) {
           useNativeDriver: true,
         }),
       ]).start(() => {
-        if (isMounted) loopAnimation();
+        if (animMountedRef.current && showCamera) loopAnimation();
       });
     };
 
     loopAnimation();
 
     // Pulse detection badge
-    Animated.loop(
+    const pulseLoop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    pulseLoop.start();
 
     return () => {
-      isMounted = false;
+      animMountedRef.current = false;
+      pulseLoop.stop();
+      scanBeamAnim.stopAnimation();
+      pulseAnim.stopAnimation();
+    };
+  }, [showCamera]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      animMountedRef.current = false;
       if (autoCaptureCountdown.current) clearTimeout(autoCaptureCountdown.current);
     };
   }, []);
 
-  // Auto-capture trigger simulation
-  useEffect(() => {
-    if (showCamera && autoCapture && documentDetected && !capturing && !selectedImageUri) {
-      autoCaptureCountdown.current = setTimeout(() => {
-        handleCapture();
-      }, 2500);
-    } else if (autoCaptureCountdown.current) {
-      clearTimeout(autoCaptureCountdown.current);
-    }
-    return () => {
-      if (autoCaptureCountdown.current) clearTimeout(autoCaptureCountdown.current);
-    };
-  }, [showCamera, autoCapture, documentDetected, selectedImageUri, capturing]);
-
-  const ensureCameraPermission = async (): Promise<boolean> => {
+  const ensureCameraPermission = useCallback(async (): Promise<boolean> => {
     if (cameraPermission?.granted) return true;
     if (cameraPermission && !cameraPermission.canAskAgain) return false;
     const permission = await requestCameraPermission();
     return permission.granted;
-  };
+  }, [cameraPermission, requestCameraPermission]);
 
-  const handleCapture = async () => {
+  const handleCapture = useCallback(async () => {
     try {
       setScreenError('');
       const granted = await ensureCameraPermission();
@@ -152,9 +143,23 @@ export default function ScanFormScreen({ navigation }: Props) {
     } finally {
       setCapturing(false);
     }
-  };
+  }, [cameraPermission, ensureCameraPermission, t]);
 
-  const handlePickFromGallery = async () => {
+  // Auto-capture trigger
+  useEffect(() => {
+    if (showCamera && autoCapture && documentDetected && !capturing && !selectedImageUri) {
+      autoCaptureCountdown.current = setTimeout(() => {
+        handleCapture();
+      }, 2500);
+    } else if (autoCaptureCountdown.current) {
+      clearTimeout(autoCaptureCountdown.current);
+    }
+    return () => {
+      if (autoCaptureCountdown.current) clearTimeout(autoCaptureCountdown.current);
+    };
+  }, [showCamera, autoCapture, documentDetected, selectedImageUri, capturing, handleCapture]);
+
+  const handlePickFromGallery = useCallback(async () => {
     try {
       setScreenError('');
       setShowSettingsButton(false);
@@ -169,7 +174,7 @@ export default function ScanFormScreen({ navigation }: Props) {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 1,
         allowsEditing: true,
       });
@@ -182,9 +187,9 @@ export default function ScanFormScreen({ navigation }: Props) {
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : t('scan.errorGalleryOpen'));
     }
-  };
+  }, [t]);
 
-  const handleUploadDocument = async () => {
+  const handleUploadDocument = useCallback(async () => {
     try {
       setScreenError('');
       const result = await DocumentPicker.getDocumentAsync({
@@ -202,21 +207,21 @@ export default function ScanFormScreen({ navigation }: Props) {
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : 'Error selecting document');
     }
-  };
+  }, []);
 
-  const handleRotate = () => {
+  const handleRotate = useCallback(() => {
     setRotationDegrees((prev) => (prev + 90) % 360);
-  };
+  }, []);
 
-  const handleRetake = () => {
+  const handleRetake = useCallback(() => {
     setSelectedImageUri('');
     setShowCamera(true);
-  };
+  }, []);
 
-  const handleProceedToAutoFill = () => {
+  const handleProceedToAutoFill = useCallback(() => {
     if (!selectedImageUri) return;
     navigation.navigate('OCRResult', { imageUri: selectedImageUri });
-  };
+  }, [navigation, selectedImageUri]);
 
   const isPdf = fileName.toLowerCase().endsWith('.pdf');
   const hasImage = Boolean(selectedImageUri);
@@ -240,7 +245,7 @@ export default function ScanFormScreen({ navigation }: Props) {
           <Animated.View
             style={[
               styles.statusPulseDot,
-              { transform: [{ scale: pulseAnim }], backgroundColor: hasImage ? Colors.success : Colors.primaryLight },
+              { transform: [{ scale: pulseAnim }], backgroundColor: hasImage ? Colors.success : Colors.accent },
             ]}
           />
           <Text style={styles.statusPillText}>
@@ -264,7 +269,7 @@ export default function ScanFormScreen({ navigation }: Props) {
         </View>
       ) : null}
 
-      {/* Main Viewport: Adobe Scan Camera or Review */}
+      {/* Main Viewport: Camera or Review */}
       {showCamera ? (
         <View style={styles.cameraBox}>
           {cameraPermission === null ? (
@@ -284,28 +289,20 @@ export default function ScanFormScreen({ navigation }: Props) {
               {/* Rule of thirds alignment grid overlay */}
               {showGrid && (
                 <View style={styles.gridOverlay} pointerEvents="none">
-                  <View style={styles.gridRow} />
-                  <View style={styles.gridRow} />
-                  <View style={styles.gridCol} />
-                  <View style={styles.gridCol} />
+                  <View style={[styles.gridLine, styles.gridRow1]} />
+                  <View style={[styles.gridLine, styles.gridRow2]} />
+                  <View style={[styles.gridLine, styles.gridCol1]} />
+                  <View style={[styles.gridLine, styles.gridCol2]} />
                 </View>
               )}
 
-              {/* Dynamic Adobe Scan Document Bounding Frame */}
+              {/* Document Bounding Frame */}
               <View style={styles.docFrame} pointerEvents="none">
-                {/* 4 Corner Pins with L-brackets and target crosshairs */}
-                <View style={styles.corner_TL}>
-                  <View style={styles.cornerPinPoint} />
-                </View>
-                <View style={styles.corner_TR}>
-                  <View style={styles.cornerPinPoint} />
-                </View>
-                <View style={styles.corner_BL}>
-                  <View style={styles.cornerPinPoint} />
-                </View>
-                <View style={styles.corner_BR}>
-                  <View style={styles.cornerPinPoint} />
-                </View>
+                {/* 4 Corner Pins with L-brackets */}
+                <View style={styles.corner_TL} />
+                <View style={styles.corner_TR} />
+                <View style={styles.corner_BL} />
+                <View style={styles.corner_BR} />
 
                 {/* Animated Laser Scanning Beam */}
                 <Animated.View
@@ -325,7 +322,7 @@ export default function ScanFormScreen({ navigation }: Props) {
                 />
               </View>
 
-              {/* Top Controls Bar: Flash, Grid, Auto-Capture, Doc Type */}
+              {/* Top Controls Bar */}
               <View style={styles.cameraTopBar}>
                 <Pressable
                   style={[styles.cameraToolBtn, torchOn && styles.cameraToolBtnActive]}
@@ -349,7 +346,7 @@ export default function ScanFormScreen({ navigation }: Props) {
                 </Pressable>
               </View>
 
-              {/* Real-time document detection feedback badge */}
+              {/* Document detection feedback badge */}
               <View style={styles.detectionBadge}>
                 <Text style={styles.detectionBadgeText}>
                   {documentDetected ? t('scan.docDetected') : t('scan.searchingDoc')}
@@ -386,7 +383,7 @@ export default function ScanFormScreen({ navigation }: Props) {
           </View>
         </View>
       ) : (
-        /* Adobe Scan Review & Enhance Post-Capture Screen */
+        /* Review & Enhance Post-Capture Screen */
         <View style={styles.reviewBox}>
           <View style={styles.reviewHeader}>
             <View>
@@ -398,7 +395,7 @@ export default function ScanFormScreen({ navigation }: Props) {
             </Pressable>
           </View>
 
-          {/* Crop & Filter Document Canvas */}
+          {/* Document Canvas */}
           <View style={styles.canvasContainer}>
             {isPdf ? (
               <View style={styles.pdfCard}>
@@ -413,14 +410,11 @@ export default function ScanFormScreen({ navigation }: Props) {
                 style={[
                   styles.imageWrapper,
                   { transform: [{ rotate: `${rotationDegrees}deg` }] },
-                  activeFilter === 'bw' && styles.filterBw,
-                  activeFilter === 'magic' && styles.filterMagic,
-                  activeFilter === 'grayscale' && styles.filterGrayscale,
                 ]}
               >
                 <Image source={{ uri: selectedImageUri }} style={styles.reviewImage} resizeMode="cover" />
 
-                {/* Perspective Crop Quad & Corner Drag Pins (Adobe Scan Style) */}
+                {/* Perspective Crop Overlay */}
                 <View style={styles.perspectiveOverlay} pointerEvents="none">
                   <View style={[styles.cropPin, styles.cropPinTL]} />
                   <View style={[styles.cropPin, styles.cropPinTR]} />
@@ -432,7 +426,7 @@ export default function ScanFormScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* Adobe Scan Enhancement Filters */}
+          {/* Enhancement Filters */}
           {!isPdf && (
             <View style={styles.filterBar}>
               <Text style={styles.filterSectionTitle}>Scan Filter:</Text>
@@ -503,7 +497,7 @@ export default function ScanFormScreen({ navigation }: Props) {
         </View>
       )}
 
-      {/* Direct Document Upload Card for convenience */}
+      {/* Direct Document Upload Card */}
       <View style={styles.docUploadCard}>
         <View style={styles.docUploadLeft}>
           <Text style={styles.docUploadIcon}>📂</Text>
@@ -607,11 +601,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
     marginBottom: Spacing.base,
-    ...Shadow.lg,
+    ...Shadow.md,
   },
   cameraContainer: {
     height: 380,
-    backgroundColor: '#0A0D14',
+    backgroundColor: '#050810',
     position: 'relative',
     overflow: 'hidden',
   },
@@ -634,25 +628,44 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.primary,
   },
   grantBtnText: {
     color: Colors.white,
     fontWeight: Typography.bold,
   },
+  // Fixed grid overlay — 4 lines with proper absolute positioning
   gridOverlay: {
     ...StyleSheet.absoluteFillObject,
-    justifyContent: 'space-evenly',
   },
-  gridRow: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
-  },
-  gridCol: {
+  gridLine: {
     position: 'absolute',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  gridRow1: {
+    top: '33.33%',
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  gridRow2: {
+    top: '66.66%',
+    left: 0,
+    right: 0,
+    height: 1,
+  },
+  gridCol1: {
+    left: '33.33%',
     top: 0,
     bottom: 0,
     width: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+  },
+  gridCol2: {
+    left: '66.66%',
+    top: 0,
+    bottom: 0,
+    width: 1,
   },
   docFrame: {
     position: 'absolute',
@@ -661,7 +674,7 @@ const styles = StyleSheet.create({
     right: 24,
     bottom: 40,
     borderWidth: 1.5,
-    borderColor: 'rgba(99, 102, 241, 0.4)',
+    borderColor: 'rgba(232, 145, 58, 0.35)',
     borderRadius: Radius.md,
   },
   corner_TL: {
@@ -672,7 +685,7 @@ const styles = StyleSheet.create({
     height: 32,
     borderTopWidth: 4,
     borderLeftWidth: 4,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
     borderTopLeftRadius: 6,
   },
   corner_TR: {
@@ -683,7 +696,7 @@ const styles = StyleSheet.create({
     height: 32,
     borderTopWidth: 4,
     borderRightWidth: 4,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
     borderTopRightRadius: 6,
   },
   corner_BL: {
@@ -694,7 +707,7 @@ const styles = StyleSheet.create({
     height: 32,
     borderBottomWidth: 4,
     borderLeftWidth: 4,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
     borderBottomLeftRadius: 6,
   },
   corner_BR: {
@@ -705,25 +718,16 @@ const styles = StyleSheet.create({
     height: 32,
     borderBottomWidth: 4,
     borderRightWidth: 4,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
     borderBottomRightRadius: 6,
-  },
-  cornerPinPoint: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.white,
-    position: 'absolute',
-    top: 2,
-    left: 2,
   },
   scanBeam: {
     position: 'absolute',
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: '#38BDF8',
-    shadowColor: '#38BDF8',
+    backgroundColor: Colors.accent,
+    shadowColor: Colors.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.9,
     shadowRadius: 10,
@@ -738,12 +742,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   cameraToolBtn: {
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    backgroundColor: 'rgba(10, 14, 27, 0.8)',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: Radius.full,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   cameraToolBtnActive: {
     backgroundColor: Colors.primaryDark,
@@ -758,12 +762,12 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 12,
     alignSelf: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    backgroundColor: 'rgba(10, 14, 27, 0.88)',
     paddingVertical: 6,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.full,
     borderWidth: 1,
-    borderColor: Colors.success,
+    borderColor: Colors.accent,
   },
   detectionBadgeText: {
     color: Colors.white,
@@ -786,7 +790,7 @@ const styles = StyleSheet.create({
   docTypeTabActive: {
     backgroundColor: Colors.primaryMuted,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.borderAccent,
   },
   docTypeTabText: {
     color: Colors.textMuted,
@@ -821,11 +825,11 @@ const styles = StyleSheet.create({
     height: 76,
     borderRadius: 38,
     borderWidth: 4,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    ...Shadow.lg,
+    backgroundColor: Colors.primaryGlow,
+    ...Shadow.glow,
   },
   shutterInnerCircle: {
     width: 58,
@@ -878,7 +882,7 @@ const styles = StyleSheet.create({
     height: 320,
     borderRadius: Radius.lg,
     overflow: 'hidden',
-    backgroundColor: '#0F172A',
+    backgroundColor: '#050810',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: Spacing.md,
@@ -900,7 +904,7 @@ const styles = StyleSheet.create({
   perspectiveBorder: {
     flex: 1,
     borderWidth: 2,
-    borderColor: Colors.primaryLight,
+    borderColor: Colors.primary,
     borderStyle: 'dashed',
     borderRadius: Radius.sm,
   },
@@ -918,15 +922,6 @@ const styles = StyleSheet.create({
   cropPinTR: { top: 12, right: 12 },
   cropPinBL: { bottom: 12, left: 12 },
   cropPinBR: { bottom: 12, right: 12 },
-  filterBw: {
-    opacity: 0.9,
-  },
-  filterMagic: {
-    borderColor: Colors.primary,
-  },
-  filterGrayscale: {
-    opacity: 0.8,
-  },
   pdfCard: {
     alignItems: 'center',
     gap: Spacing.sm,
@@ -1013,7 +1008,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
     paddingVertical: Spacing.md,
     alignItems: 'center',
-    ...Shadow.md,
+    ...Shadow.glow,
   },
   autoFillPrimaryBtnText: {
     color: Colors.white,
@@ -1055,7 +1050,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.borderAccent,
   },
   docUploadBtnText: {
     color: Colors.primaryLight,

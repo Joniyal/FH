@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Pressable,
@@ -11,6 +11,8 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import LargeActionButton from '../components/LargeActionButton';
 import { RootStackParamList } from '../types/navigation';
+import { FormHistoryEntry } from '../types/app';
+import { getFormHistory } from '../services/storageService';
 import { useLanguage } from '../i18n/LanguageContext';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
@@ -24,8 +26,20 @@ const FEATURES = [
   { key: 'preview', icon: '✅', labelKey: 'home.previewLabel', subKey: 'home.previewSubLabel', route: 'FilledFormPreview' as const },
 ];
 
+function formatTimeAgo(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 export default function HomeScreen({ navigation }: Props) {
   const { t } = useLanguage();
+  const [recentHistory, setRecentHistory] = useState<FormHistoryEntry[]>([]);
 
   // Staggered entry animations for cards
   const anims = useRef(FEATURES.map(() => new Animated.Value(0))).current;
@@ -51,7 +65,17 @@ export default function HomeScreen({ navigation }: Props) {
     ).start();
   }, []);
 
-  const handleQuickUploadPdf = async () => {
+  // Load recent form history on focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      getFormHistory()
+        .then((history) => setRecentHistory(history.slice(0, 3)))
+        .catch(() => {});
+    });
+    return unsubscribe;
+  }, [navigation]);
+
+  const handleQuickUploadPdf = useCallback(async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['application/pdf', 'image/*'],
@@ -63,7 +87,7 @@ export default function HomeScreen({ navigation }: Props) {
     } catch {
       navigation.navigate('ScanForm');
     }
-  };
+  }, [navigation]);
 
   return (
     <ScrollView
@@ -100,7 +124,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('ScanForm')}
         >
           <Text style={styles.quickActionIcon}>📷</Text>
-          <Text style={styles.quickActionText}>Adobe Scan</Text>
+          <Text style={styles.quickActionText}>Scan Form</Text>
         </Pressable>
 
         <Pressable
@@ -108,7 +132,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={handleQuickUploadPdf}
         >
           <Text style={styles.quickActionIcon}>📂</Text>
-          <Text style={[styles.quickActionText, styles.quickActionTextPrimary]}>Upload PDF / Doc</Text>
+          <Text style={[styles.quickActionText, styles.quickActionTextPrimary]}>Upload PDF</Text>
         </Pressable>
 
         <Pressable
@@ -116,7 +140,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('PersonalVault')}
         >
           <Text style={styles.quickActionIcon}>🪪</Text>
-          <Text style={styles.quickActionText}>My ID Vault</Text>
+          <Text style={styles.quickActionText}>My Vault</Text>
         </Pressable>
       </View>
 
@@ -139,13 +163,46 @@ export default function HomeScreen({ navigation }: Props) {
         </View>
       </Animated.View>
 
+      {/* Recent form history */}
+      {recentHistory.length > 0 && (
+        <View style={styles.recentSection}>
+          <View style={styles.recentHeader}>
+            <Text style={styles.sectionLabel}>Recent Forms</Text>
+            <Pressable onPress={() => navigation.navigate('FormHistory')}>
+              <Text style={styles.seeAllBtn}>See all →</Text>
+            </Pressable>
+          </View>
+          {recentHistory.map((entry) => {
+            const filledCount = Object.values(entry.filledFields).filter((v) => v?.trim()).length;
+            return (
+              <Pressable key={entry.id} style={styles.historyCard}>
+                <View style={styles.historyIconWrap}>
+                  <Text style={styles.historyIcon}>
+                    {entry.formType === 'scan' ? '📷' : entry.formType === 'upload' ? '📄' : '✍️'}
+                  </Text>
+                </View>
+                <View style={styles.historyMeta}>
+                  <Text style={styles.historyTitle} numberOfLines={1}>
+                    {entry.formType === 'scan' ? 'Scanned Form' : entry.formType === 'upload' ? 'Uploaded Document' : 'Manual Entry'}
+                  </Text>
+                  <Text style={styles.historySub}>{filledCount}/4 fields · {formatTimeAgo(entry.timestamp)}</Text>
+                </View>
+                <View style={styles.historyBadge}>
+                  <Text style={styles.historyBadgeText}>{filledCount}/4</Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       {/* Step indicator */}
       <Text style={styles.sectionLabel}>How it works</Text>
       <View style={styles.stepsRow}>
-        {['Scan', 'OCR', 'Vault', 'Preview'].map((step, i) => (
+        {['Scan', 'Read', 'Fill', 'Done'].map((step, i) => (
           <View key={step} style={styles.stepItem}>
             <View style={[styles.stepDot, i === 0 && styles.stepDotActive]}>
-              <Text style={styles.stepNum}>{i + 1}</Text>
+              <Text style={[styles.stepNum, i === 0 && styles.stepNumActive]}>{i + 1}</Text>
             </View>
             {i < 3 && <View style={styles.stepLine} />}
           </View>
@@ -181,6 +238,16 @@ export default function HomeScreen({ navigation }: Props) {
         ))}
       </View>
 
+      {/* Form History link */}
+      <Pressable
+        style={styles.historyLinkBtn}
+        onPress={() => navigation.navigate('FormHistory')}
+      >
+        <Text style={styles.historyLinkIcon}>📋</Text>
+        <Text style={styles.historyLinkText}>View Form History</Text>
+        <Text style={styles.historyLinkArrow}>→</Text>
+      </Pressable>
+
       {/* Footer */}
       <Text style={styles.footer}>v1.0 · Fast & Offline · {new Date().getFullYear()}</Text>
     </ScrollView>
@@ -210,11 +277,11 @@ const styles = StyleSheet.create({
     height: 54,
     borderRadius: Radius.md,
     backgroundColor: Colors.primaryDark,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    ...Shadow.lg,
+    ...Shadow.glow,
   },
   logoText: {
     color: Colors.white,
@@ -255,7 +322,7 @@ const styles = StyleSheet.create({
   },
   quickActionBtnPrimary: {
     backgroundColor: Colors.primaryMuted,
-    borderColor: Colors.primary,
+    borderColor: Colors.borderAccent,
   },
   quickActionIcon: {
     fontSize: 22,
@@ -271,12 +338,12 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   noticeCard: {
-    backgroundColor: Colors.primaryMuted,
+    backgroundColor: Colors.accentMuted,
     borderRadius: Radius.lg,
     padding: Spacing.md,
     marginBottom: Spacing.base,
     borderWidth: 1,
-    borderColor: Colors.primary,
+    borderColor: Colors.accentDark,
   },
   noticeRow: {
     flexDirection: 'row',
@@ -293,13 +360,75 @@ const styles = StyleSheet.create({
   noticeTitle: {
     fontSize: Typography.base,
     fontWeight: Typography.bold,
-    color: Colors.primaryLight,
+    color: Colors.accent,
     marginBottom: 2,
   },
   noticeText: {
     fontSize: Typography.sm,
-    color: '#A5B4FC',
+    color: Colors.accentLight,
     lineHeight: 18,
+  },
+  recentSection: {
+    marginBottom: Spacing.md,
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing.sm,
+  },
+  seeAllBtn: {
+    fontSize: Typography.sm,
+    color: Colors.primary,
+    fontWeight: Typography.semibold,
+  },
+  historyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.md,
+    padding: Spacing.sm,
+    marginBottom: Spacing.xs,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  historyIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  historyIcon: {
+    fontSize: 18,
+  },
+  historyMeta: {
+    flex: 1,
+  },
+  historyTitle: {
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    color: Colors.textPrimary,
+  },
+  historySub: {
+    fontSize: Typography.xs,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  historyBadge: {
+    backgroundColor: Colors.primaryMuted,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.borderAccent,
+  },
+  historyBadgeText: {
+    fontSize: Typography.xs,
+    fontWeight: Typography.bold,
+    color: Colors.primaryLight,
   },
   sectionLabel: {
     fontSize: Typography.xs,
@@ -340,6 +469,9 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
     color: Colors.textSecondary,
   },
+  stepNumActive: {
+    color: Colors.white,
+  },
   stepLine: {
     flex: 1,
     height: 2,
@@ -348,6 +480,30 @@ const styles = StyleSheet.create({
   },
   buttonGroup: {
     marginTop: Spacing.xs,
+  },
+  historyLinkBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.lg,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginTop: Spacing.sm,
+  },
+  historyLinkIcon: {
+    fontSize: 20,
+  },
+  historyLinkText: {
+    flex: 1,
+    fontSize: Typography.base,
+    fontWeight: Typography.semibold,
+    color: Colors.textSecondary,
+  },
+  historyLinkArrow: {
+    fontSize: Typography.lg,
+    color: Colors.textMuted,
   },
   footer: {
     textAlign: 'center',

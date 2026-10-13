@@ -18,3 +18,14 @@ export const EMPTY_PERSONAL_VAULT: PersonalVaultData = {
   phone: '',
   dob: '',
 };
+
+// ── Form History ────────────────────────────────────────────────────────────
+
+export type FormHistoryEntry = {
+  id: string;
+  timestamp: number;
+  formType: 'scan' | 'upload' | 'manual';
+  imageUri?: string;
+  ocrText?: string;
+  filledFields: Partial<Record<PersonalFieldKey, string>>;
+};

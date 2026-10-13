@@ -32,7 +32,7 @@ export default function HeaderLanguageMenu() {
       >
         <View style={styles.row}>
           <Text style={[styles.label, language === 'en' && styles.active]}>EN</Text>
-          <Text style={styles.divider}>|</Text>
+          <View style={styles.dividerDot} />
           <Text style={[styles.label, language === 'ml' && styles.active]}>മ</Text>
         </View>
       </Pressable>
@@ -42,9 +42,9 @@ export default function HeaderLanguageMenu() {
 
 const styles = StyleSheet.create({
   pill: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: Colors.bgElevated,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: Colors.borderLight,
     borderRadius: Radius.full,
     paddingVertical: 5,
     paddingHorizontal: Spacing.md,
@@ -53,7 +53,7 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.xs,
+    gap: Spacing.sm,
   },
   label: {
     fontSize: Typography.sm,
@@ -65,8 +65,10 @@ const styles = StyleSheet.create({
     color: Colors.primaryLight,
     fontWeight: Typography.bold,
   },
-  divider: {
-    color: Colors.border,
-    fontSize: Typography.xs,
+  dividerDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.borderLight,
   },
 });

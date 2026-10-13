@@ -1,47 +1,57 @@
 // ─── FH Design System – Color Tokens ──────────────────────────────────────────
-// A single source-of-truth for the entire app palette.
-// Dark-mode first with an indigo/violet accent.
+// Warm Copper/Amber + Deep Ocean Navy palette.
+// A distinctive, premium feel — NOT the generic AI-app purple.
 
 export const Colors = {
-  // Backgrounds
-  bg: '#0F1117',          // deepest background
-  bgCard: '#181C27',      // card surfaces
-  bgElevated: '#1E2333',  // elevated / modal surfaces
-  bgInput: '#232940',     // text input fill
+  // Backgrounds — Deep ocean navy
+  bg: '#0A0E1B',             // deepest background
+  bgCard: '#111827',          // card surfaces
+  bgElevated: '#1A2332',      // elevated / modal surfaces
+  bgInput: '#1E293B',         // text input fill
+  bgGlass: 'rgba(17, 24, 39, 0.75)', // glassmorphism panels
 
-  // Primary accent – vivid indigo-violet
-  primary: '#6366F1',
-  primaryLight: '#818CF8',
-  primaryDark: '#4F46E5',
-  primaryMuted: '#312E81',
+  // Primary accent — Warm copper/amber
+  primary: '#E8913A',
+  primaryLight: '#F5B870',
+  primaryDark: '#C67520',
+  primaryMuted: '#2D1F0E',
+  primaryGlow: 'rgba(232, 145, 58, 0.18)',
 
-  // Secondary accent – emerald for success states
-  success: '#10B981',
-  successLight: '#A7F3D0',
-  successBg: '#064E3B',
+  // Secondary accent — Teal/cyan for interactive highlights
+  accent: '#2DD4BF',
+  accentLight: '#5EEAD4',
+  accentDark: '#14B8A6',
+  accentMuted: '#0D2D2A',
 
-  // Warning
-  warning: '#F59E0B',
+  // Success — Emerald
+  success: '#22C55E',
+  successLight: '#86EFAC',
+  successBg: '#052E16',
+
+  // Warning — Golden
+  warning: '#FBBF24',
   warningLight: '#FDE68A',
-  warningBg: '#78350F',
+  warningBg: '#451A03',
 
-  // Danger / error
-  danger: '#EF4444',
-  dangerLight: '#FCA5A5',
-  dangerBg: '#7F1D1D',
+  // Danger — Rose
+  danger: '#F43F5E',
+  dangerLight: '#FDA4AF',
+  dangerBg: '#4C0519',
 
   // Text
-  textPrimary: '#F1F5F9',   // headings
-  textSecondary: '#94A3B8', // body / sublabels
-  textMuted: '#64748B',     // placeholders / hints
-  textInverse: '#0F172A',   // text on light surfaces
+  textPrimary: '#F0F4FF',     // headings & primary content
+  textSecondary: '#8B9DC3',   // body / sublabels
+  textMuted: '#4A5E82',       // placeholders / hints
+  textInverse: '#0A0E1B',     // text on light surfaces
+  textWarm: '#F5B870',        // warm highlight text
 
   // Borders
-  border: '#2D3748',
-  borderLight: '#3D4A63',
+  border: '#1E293B',
+  borderLight: '#334155',
+  borderAccent: 'rgba(232, 145, 58, 0.35)',
 
   // Misc
-  overlay: 'rgba(0,0,0,0.65)',
+  overlay: 'rgba(0, 0, 0, 0.72)',
   white: '#FFFFFF',
   transparent: 'transparent',
 };

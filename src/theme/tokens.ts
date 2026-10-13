@@ -1,4 +1,4 @@
-// ─── FH Design System – Typography & Spacing ──────────────────────────────────
+// ─── FH Design System – Typography, Spacing, Radius, Shadows ────────────────
 
 export const Typography = {
   // Font sizes
@@ -50,7 +50,7 @@ export const Shadow = {
   sm: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 4,
     elevation: 2,
   },
@@ -62,11 +62,27 @@ export const Shadow = {
     elevation: 6,
   },
   lg: {
-    shadowColor: '#6366F1',
+    shadowColor: '#E8913A',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.3,
     shadowRadius: 14,
     elevation: 10,
+  },
+  // Warm glow shadow for primary CTA buttons
+  glow: {
+    shadowColor: '#E8913A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  // Teal accent glow
+  accentGlow: {
+    shadowColor: '#2DD4BF',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
   },
 };
 
