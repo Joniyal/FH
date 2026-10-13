@@ -10,20 +10,32 @@ import {
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import LargeActionButton from '../components/LargeActionButton';
+import BottomNavBar from '../components/BottomNavBar';
+import QuickFillTemplatesModal, { FormTemplate } from '../components/QuickFillTemplatesModal';
+import OnboardingModal from '../components/OnboardingModal';
+import { useToast } from '../components/Toast';
 import { RootStackParamList } from '../types/navigation';
-import { FormHistoryEntry } from '../types/app';
-import { getFormHistory } from '../services/storageService';
+import { FormHistoryEntry, PersonalFieldKey } from '../types/app';
+import { getFormHistory, getPersonalVaultData } from '../services/storageService';
 import { useLanguage } from '../i18n/LanguageContext';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
-const FEATURES = [
-  { key: 'scan', icon: '📷', labelKey: 'home.scanLabel', subKey: 'home.scanSubLabel', route: 'ScanForm' as const },
-  { key: 'ocr', icon: '🧾', labelKey: 'home.ocrLabel', subKey: 'home.ocrSubLabel', route: 'OCRResult' as const },
-  { key: 'vault', icon: '🔐', labelKey: 'home.vaultLabel', subKey: 'home.vaultSubLabel', route: 'PersonalVault' as const },
-  { key: 'preview', icon: '✅', labelKey: 'home.previewLabel', subKey: 'home.previewSubLabel', route: 'FilledFormPreview' as const },
+type FeatureItem = {
+  key: string;
+  icon: string;
+  labelKey: string;
+  subKey: string;
+  route: 'ScanForm' | 'OCRResult' | 'PersonalVault' | 'FilledFormPreview';
+};
+
+const FEATURES: FeatureItem[] = [
+  { key: 'scan', icon: '📷', labelKey: 'home.scanLabel', subKey: 'home.scanSubLabel', route: 'ScanForm' },
+  { key: 'ocr', icon: '🧾', labelKey: 'home.ocrLabel', subKey: 'home.ocrSubLabel', route: 'OCRResult' },
+  { key: 'vault', icon: '🔐', labelKey: 'home.vaultLabel', subKey: 'home.vaultSubLabel', route: 'PersonalVault' },
+  { key: 'preview', icon: '✅', labelKey: 'home.previewLabel', subKey: 'home.previewSubLabel', route: 'FilledFormPreview' },
 ];
 
 function formatTimeAgo(timestamp: number): string {
@@ -39,7 +51,10 @@ function formatTimeAgo(timestamp: number): string {
 
 export default function HomeScreen({ navigation }: Props) {
   const { t } = useLanguage();
+  const { showToast } = useToast();
   const [recentHistory, setRecentHistory] = useState<FormHistoryEntry[]>([]);
+  const [showTemplates, setShowTemplates] = useState<boolean>(false);
+  const [showOnboarding, setShowOnboarding] = useState<boolean>(false);
 
   // Staggered entry animations for cards
   const anims = useRef(FEATURES.map(() => new Animated.Value(0))).current;
@@ -89,13 +104,34 @@ export default function HomeScreen({ navigation }: Props) {
     }
   }, [navigation]);
 
+  const handleSelectTemplate = async (template: FormTemplate) => {
+    setShowTemplates(false);
+    try {
+      const vault = await getPersonalVaultData();
+      const filled: Partial<Record<PersonalFieldKey, string>> = {};
+      template.requiredFields.forEach((field) => {
+        if (vault[field]?.trim()) {
+          filled[field] = vault[field].trim();
+        }
+      });
+      showToast(`Auto-filled: ${template.title}! ⚡`, 'success');
+      navigation.navigate('FilledFormPreview', {
+        imageUri: 'template.pdf',
+        filledFields: filled,
+      });
+    } catch {
+      showToast('Error loading template', 'error');
+    }
+  };
+
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      keyboardShouldPersistTaps="handled"
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={styles.rootContainer}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.contentContainer}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
       {/* Header */}
       <Animated.View
         style={[
@@ -114,6 +150,12 @@ export default function HomeScreen({ navigation }: Props) {
             <Text style={styles.appName}>Form Help</Text>
             <Text style={styles.tagline}>{t('home.subtitle')}</Text>
           </View>
+          <Pressable
+            style={styles.guideBadgeBtn}
+            onPress={() => setShowOnboarding(true)}
+          >
+            <Text style={styles.guideBadgeText}>❓ Guide</Text>
+          </Pressable>
         </View>
       </Animated.View>
 
@@ -124,7 +166,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('ScanForm')}
         >
           <Text style={styles.quickActionIcon}>📷</Text>
-          <Text style={styles.quickActionText}>Scan Form</Text>
+          <Text style={styles.quickActionText}>Scan</Text>
         </Pressable>
 
         <Pressable
@@ -132,7 +174,15 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={handleQuickUploadPdf}
         >
           <Text style={styles.quickActionIcon}>📂</Text>
-          <Text style={[styles.quickActionText, styles.quickActionTextPrimary]}>Upload PDF</Text>
+          <Text style={[styles.quickActionText, styles.quickActionTextPrimary]}>PDF</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.quickActionBtn}
+          onPress={() => setShowTemplates(true)}
+        >
+          <Text style={styles.quickActionIcon}>⚡</Text>
+          <Text style={styles.quickActionText}>Templates</Text>
         </Pressable>
 
         <Pressable
@@ -140,7 +190,7 @@ export default function HomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('PersonalVault')}
         >
           <Text style={styles.quickActionIcon}>🪪</Text>
-          <Text style={styles.quickActionText}>My Vault</Text>
+          <Text style={styles.quickActionText}>Vault</Text>
         </Pressable>
       </View>
 
@@ -231,7 +281,7 @@ export default function HomeScreen({ navigation }: Props) {
               label={t(feature.labelKey)}
               subLabel={t(feature.subKey)}
               icon={feature.icon}
-              onPress={() => navigation.navigate(feature.route as any)}
+              onPress={() => navigation.navigate(feature.route)}
               variant={index === 0 ? 'primary' : 'secondary'}
             />
           </Animated.View>
@@ -251,10 +301,37 @@ export default function HomeScreen({ navigation }: Props) {
       {/* Footer */}
       <Text style={styles.footer}>v1.0 · Fast & Offline · {new Date().getFullYear()}</Text>
     </ScrollView>
-  );
+
+    {/* Bottom navigation bar */}
+    <BottomNavBar
+      activeTab="Home"
+      onNavigate={(tab) => {
+        if (tab === 'Home') return;
+        navigation.navigate(tab);
+      }}
+    />
+
+    {/* Quick fill templates modal */}
+    <QuickFillTemplatesModal
+      visible={showTemplates}
+      onClose={() => setShowTemplates(false)}
+      onSelectTemplate={handleSelectTemplate}
+    />
+
+    {/* Onboarding walkthrough modal */}
+    <OnboardingModal
+      visible={showOnboarding}
+      onDismiss={() => setShowOnboarding(false)}
+    />
+  </View>
+);
 }
 
 const styles = StyleSheet.create({
+  rootContainer: {
+    flex: 1,
+    backgroundColor: Colors.bg,
+  },
   container: {
     flex: 1,
     backgroundColor: Colors.bg,
@@ -262,7 +339,20 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: Spacing.base,
     paddingTop: Spacing.base,
-    paddingBottom: Spacing['2xl'],
+    paddingBottom: 88,
+  },
+  guideBadgeBtn: {
+    backgroundColor: Colors.bgElevated,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  guideBadgeText: {
+    fontSize: Typography.xs,
+    color: Colors.textWarm,
+    fontWeight: Typography.bold,
   },
   headerBlock: {
     marginBottom: Spacing.md,

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  DimensionValue,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +18,8 @@ import { extractTextFromImage, parseDocumentData } from '../services/ocrService'
 import { useLanguage } from '../i18n/LanguageContext';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
+import { useToast } from '../components/Toast';
+import ProgressRing from '../components/ProgressRing';
 
 const FIELD_CONFIG: {
   key: keyof PersonalVaultData;
@@ -178,6 +181,8 @@ export default function PersonalVaultScreen() {
     }
   };
 
+  const { showToast } = useToast();
+
   const handleUploadDocumentPhoto = async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -186,7 +191,7 @@ export default function PersonalVaultScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 1,
       });
       if (!result.canceled && result.assets[0]?.uri) {
@@ -219,6 +224,7 @@ export default function PersonalVaultScreen() {
       await savePersonalVaultData(normalized);
       setForm(normalized);
       setSaveSuccess(true);
+      showToast('Vault data saved successfully! 🔐', 'success');
       Animated.sequence([
         Animated.timing(successAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
         Animated.delay(1800),
@@ -306,7 +312,12 @@ export default function PersonalVaultScreen() {
           <Text style={styles.progressPercent}>{Math.round(progressRatio * 100)}%</Text>
         </View>
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${progressRatio * 100}%` as any }]} />
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${Math.round(progressRatio * 100)}%` as DimensionValue },
+            ]}
+          />
         </View>
         <Text style={styles.progressSub}>{filledCount} of 4 fields filled</Text>
       </View>

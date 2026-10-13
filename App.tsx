@@ -6,10 +6,13 @@ import ScanFormScreen from './src/screens/ScanFormScreen';
 import OCRResultScreen from './src/screens/OCRResultScreen';
 import PersonalVaultScreen from './src/screens/PersonalVaultScreen';
 import FilledFormPreviewScreen from './src/screens/FilledFormPreviewScreen';
+import FormHistoryScreen from './src/screens/FormHistoryScreen';
 import { RootStackParamList } from './src/types/navigation';
 import { LanguageProvider, useLanguage } from './src/i18n/LanguageContext';
 import HeaderLanguageMenu from './src/components/HeaderLanguageMenu';
 import Colors from './src/theme/colors';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import { ToastProvider } from './src/components/Toast';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -85,6 +88,11 @@ function AppNavigator() {
           component={FilledFormPreviewScreen}
           options={{ title: t('screen.previewTitle') }}
         />
+        <Stack.Screen
+          name="FormHistory"
+          component={FormHistoryScreen}
+          options={{ title: 'Form History' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -92,8 +100,12 @@ function AppNavigator() {
 
 export default function App() {
   return (
-    <LanguageProvider>
-      <AppNavigator />
-    </LanguageProvider>
+    <ErrorBoundary>
+      <LanguageProvider>
+        <ToastProvider>
+          <AppNavigator />
+        </ToastProvider>
+      </LanguageProvider>
+    </ErrorBoundary>
   );
 }

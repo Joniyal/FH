@@ -19,6 +19,7 @@ import { RootStackParamList } from '../types/navigation';
 import { useLanguage } from '../i18n/LanguageContext';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
+import { useToast } from '../components/Toast';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ScanForm'>;
 
@@ -47,12 +48,20 @@ export default function ScanFormScreen({ navigation }: Props) {
   const [rotationDegrees, setRotationDegrees] = useState<number>(0);
   const [activeFilter, setActiveFilter] = useState<FilterType>('magic');
 
+  const { showToast } = useToast();
+
   // Animation values
   const scanBeamAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const shutterScale = useRef(new Animated.Value(1)).current;
   const autoCaptureCountdown = useRef<NodeJS.Timeout | null>(null);
   const animMountedRef = useRef(true);
+  const showCameraRef = useRef(showCamera);
+  showCameraRef.current = showCamera;
+
+  // Batch scan state (multi-page)
+  const [batchMode, setBatchMode] = useState<boolean>(false);
+  const [batchPages, setBatchPages] = useState<string[]>([]);
 
   // Animated scanner laser beam loop — only when camera is visible
   useEffect(() => {
@@ -61,7 +70,7 @@ export default function ScanFormScreen({ navigation }: Props) {
     if (!showCamera) return;
 
     const loopAnimation = () => {
-      if (!animMountedRef.current) return;
+      if (!animMountedRef.current || !showCameraRef.current) return;
       Animated.sequence([
         Animated.timing(scanBeamAnim, {
           toValue: 1,
@@ -76,7 +85,7 @@ export default function ScanFormScreen({ navigation }: Props) {
           useNativeDriver: true,
         }),
       ]).start(() => {
-        if (animMountedRef.current && showCamera) loopAnimation();
+        if (animMountedRef.current && showCameraRef.current) loopAnimation();
       });
     };
 
@@ -131,10 +140,21 @@ export default function ScanFormScreen({ navigation }: Props) {
       setCapturing(true);
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.95 });
       if (photo?.uri) {
-        setSelectedImageUri(photo.uri);
-        setFileName('Scanned_Document.jpg');
-        setShowCamera(false);
-        setRotationDegrees(0);
+        if (batchMode) {
+          setBatchPages((prev) => {
+            const next = [...prev, photo.uri];
+            showToast(`Page ${next.length} captured! 📑`, 'success');
+            return next;
+          });
+          setSelectedImageUri(photo.uri);
+          setFileName(`Batch_Page_${batchPages.length + 1}.jpg`);
+        } else {
+          setSelectedImageUri(photo.uri);
+          setFileName('Scanned_Document.jpg');
+          setShowCamera(false);
+          setRotationDegrees(0);
+          showToast('Document captured! 📄', 'success');
+        }
       } else {
         setScreenError(t('scan.errorImageMissing'));
       }
@@ -143,13 +163,16 @@ export default function ScanFormScreen({ navigation }: Props) {
     } finally {
       setCapturing(false);
     }
-  }, [cameraPermission, ensureCameraPermission, t]);
+  }, [batchMode, batchPages.length, cameraPermission, ensureCameraPermission, showToast, t]);
 
-  // Auto-capture trigger
+  const handleCaptureRef = useRef(handleCapture);
+  handleCaptureRef.current = handleCapture;
+
+  // Auto-capture trigger with stable ref callback
   useEffect(() => {
     if (showCamera && autoCapture && documentDetected && !capturing && !selectedImageUri) {
       autoCaptureCountdown.current = setTimeout(() => {
-        handleCapture();
+        handleCaptureRef.current();
       }, 2500);
     } else if (autoCaptureCountdown.current) {
       clearTimeout(autoCaptureCountdown.current);
@@ -157,7 +180,7 @@ export default function ScanFormScreen({ navigation }: Props) {
     return () => {
       if (autoCaptureCountdown.current) clearTimeout(autoCaptureCountdown.current);
     };
-  }, [showCamera, autoCapture, documentDetected, selectedImageUri, capturing, handleCapture]);
+  }, [showCamera, autoCapture, documentDetected, selectedImageUri, capturing]);
 
   const handlePickFromGallery = useCallback(async () => {
     try {
@@ -343,6 +366,17 @@ export default function ScanFormScreen({ navigation }: Props) {
                   onPress={() => setAutoCapture((v) => !v)}
                 >
                   <Text style={styles.cameraToolIcon}>{autoCapture ? '⚡ Auto' : '🔘 Manual'}</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.cameraToolBtn, batchMode && styles.cameraToolBtnActive]}
+                  onPress={() => {
+                    const next = !batchMode;
+                    setBatchMode(next);
+                    showToast(next ? 'Batch Scan active (multi-page)' : 'Single Scan mode', 'info');
+                  }}
+                >
+                  <Text style={styles.cameraToolIcon}>{batchMode ? `📑 Batch (${batchPages.length})` : '📄 Single'}</Text>
                 </Pressable>
               </View>
 
@@ -647,12 +681,14 @@ const styles = StyleSheet.create({
     top: '33.33%',
     left: 0,
     right: 0,
+    width: '100%',
     height: 1,
   },
   gridRow2: {
     top: '66.66%',
     left: 0,
     right: 0,
+    width: '100%',
     height: 1,
   },
   gridCol1: {
@@ -660,12 +696,14 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     width: 1,
+    height: '100%',
   },
   gridCol2: {
     left: '66.66%',
     top: 0,
     bottom: 0,
     width: 1,
+    height: '100%',
   },
   docFrame: {
     position: 'absolute',

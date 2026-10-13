@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  DimensionValue,
   Modal,
   Platform,
   Pressable,
@@ -10,6 +11,8 @@ import {
   Text,
   View,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { ExpoSpeechRecognitionModule } from 'expo-speech-recognition';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
@@ -27,6 +30,9 @@ import { useSpeechToText } from '../hooks/useSpeechToText';
 import { useLanguage } from '../i18n/LanguageContext';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
+import { useToast } from '../components/Toast';
+import ProgressRing from '../components/ProgressRing';
+import SkeletonItem, { SkeletonCard } from '../components/SkeletonLoader';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OCRResult'>;
 
@@ -182,7 +188,8 @@ export default function OCRResultScreen({ route, navigation }: Props) {
     dob: t('field.dob'),
   };
 
-  const imageUri = route.params?.imageUri;
+  const { showToast } = useToast();
+  const [currentImageUri, setCurrentImageUri] = useState<string>(route.params?.imageUri || '');
 
   const [loadingOCR, setLoadingOCR] = useState<boolean>(false);
   const [ocrText, setOcrText] = useState<string>('');
@@ -205,6 +212,12 @@ export default function OCRResultScreen({ route, navigation }: Props) {
 
   const { transcript, listening, error: speechError, startListening, stopListening, clearTranscript } =
     useSpeechToText(recognitionLanguage);
+
+  useEffect(() => {
+    if (route.params?.imageUri) {
+      setCurrentImageUri(route.params.imageUri);
+    }
+  }, [route.params?.imageUri]);
 
   useEffect(() => {
     getPersonalVaultData()
@@ -241,10 +254,49 @@ export default function OCRResultScreen({ route, navigation }: Props) {
   }, [listening]);
 
   useEffect(() => {
-    if (imageUri && !ocrDone && !loadingOCR && !ocrText) {
-      handleRunOCR();
+    if (currentImageUri && !ocrDone && !loadingOCR && !ocrText) {
+      handleRunOCR(currentImageUri);
     }
-  }, [imageUri]);
+  }, [currentImageUri]);
+
+  const handlePickFromGallery = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        showToast('Gallery permission required', 'warning');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 1,
+      });
+      if (!result.canceled && result.assets[0]?.uri) {
+        const uri = result.assets[0].uri;
+        setCurrentImageUri(uri);
+        handleRunOCR(uri);
+        showToast('Document image selected!', 'info');
+      }
+    } catch {
+      showToast('Error picking image', 'error');
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'image/*'],
+        copyToCacheDirectory: true,
+      });
+      if (!result.canceled && result.assets && result.assets[0]?.uri) {
+        const uri = result.assets[0].uri;
+        setCurrentImageUri(uri);
+        handleRunOCR(uri);
+        showToast('Document uploaded!', 'info');
+      }
+    } catch {
+      showToast('Error selecting document', 'error');
+    }
+  };
 
   const handleAutoFillAll = () => {
     const filled: Partial<Record<PersonalFieldKey, string>> = {};
@@ -254,21 +306,27 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       }
     });
     setVoiceFilledFields((prev) => ({ ...prev, ...filled }));
+    showToast('Auto-filled from Vault! ⚡', 'success');
   };
 
-  const handleRunOCR = async () => {
+  const handleRunOCR = async (targetUri?: string) => {
+    const uriToProcess = targetUri || currentImageUri;
     if (loadingOCR) return;
-    if (!imageUri) { setOcrError(t('ocr.errorSelectImage')); return; }
+    if (!uriToProcess) {
+      // Don't auto-throw error if user hasn't selected a document yet
+      return;
+    }
 
     setLoadingOCR(true);
     setOcrError('');
     setOcrDone(false);
     try {
-      const result = await extractTextFromImage(imageUri);
+      const result = await extractTextFromImage(uriToProcess);
       setOcrText(result.text);
       setOcrConfidence(result.confidence);
       setConfidenceConfirmed(null);
       setOcrDone(true);
+      showToast('Form scanned successfully! 🎯', 'success');
     } catch (error) {
       setOcrError(error instanceof Error ? error.message : t('ocr.errorGeneric'));
     } finally {
@@ -343,9 +401,9 @@ export default function OCRResultScreen({ route, navigation }: Props) {
   };
 
   const handleGoToFilledPreview = () => {
-    if (!imageUri) { setOcrError(t('ocr.errorPreviewNoImage')); return; }
+    if (!currentImageUri) { setOcrError(t('ocr.errorPreviewNoImage')); return; }
     if (!ocrText.trim()) { setOcrError(t('ocr.errorPreviewNoText')); return; }
-    navigation.navigate('FilledFormPreview', { imageUri, filledFields: finalFilledFields });
+    navigation.navigate('FilledFormPreview', { imageUri: currentImageUri, filledFields: finalFilledFields });
   };
 
   const getConfidenceColor = () => {
@@ -364,24 +422,44 @@ export default function OCRResultScreen({ route, navigation }: Props) {
       <Text style={styles.heading}>{t('ocr.heading')}</Text>
       <Text style={styles.helperText}>{t('ocr.helper')}</Text>
 
-      {/* Run OCR button */}
-      <ActionBtn
-        label={loadingOCR ? '⏳  ' + t('ocr.reading') : '📘  ' + t('ocr.run')}
-        onPress={handleRunOCR}
-        disabled={loadingOCR || !imageUri}
-      />
-
-      {!imageUri && (
-        <View style={styles.noImageBanner}>
-          <Text style={styles.noImageText}>📷  No image selected. Go to Scan Form first.</Text>
+      {/* If no document selected yet, offer instant source options */}
+      {!currentImageUri ? (
+        <View style={styles.documentPickerCard}>
+          <Text style={styles.documentPickerTitle}>Select Form to Process</Text>
+          <Text style={styles.documentPickerSub}>
+            Scan with camera or upload an existing image/PDF to auto-extract fields
+          </Text>
+          <View style={styles.pickerBtnsRow}>
+            <Pressable
+              style={styles.pickerBtn}
+              onPress={() => navigation.navigate('ScanForm')}
+            >
+              <Text style={styles.pickerBtnIcon}>📷</Text>
+              <Text style={styles.pickerBtnText}>Camera</Text>
+            </Pressable>
+            <Pressable style={styles.pickerBtn} onPress={handlePickFromGallery}>
+              <Text style={styles.pickerBtnIcon}>🖼️</Text>
+              <Text style={styles.pickerBtnText}>Gallery</Text>
+            </Pressable>
+            <Pressable style={styles.pickerBtn} onPress={handleUploadDocument}>
+              <Text style={styles.pickerBtnIcon}>📁</Text>
+              <Text style={styles.pickerBtnText}>PDF / Doc</Text>
+            </Pressable>
+          </View>
         </View>
+      ) : (
+        /* Run OCR action button when an image is present */
+        <ActionBtn
+          label={loadingOCR ? '⏳  ' + t('ocr.reading') : '📘  ' + t('ocr.run')}
+          onPress={() => handleRunOCR()}
+          disabled={loadingOCR}
+        />
       )}
 
-      {/* Loading indicator */}
+      {/* Skeleton loading indicator */}
       {loadingOCR ? (
-        <View style={styles.loadingBlock}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-          <Text style={styles.loadingText}>{t('ocr.reading')}</Text>
+        <View style={{ marginVertical: Spacing.md }}>
+          <SkeletonCard lines={4} />
         </View>
       ) : null}
 
@@ -430,7 +508,15 @@ export default function OCRResultScreen({ route, navigation }: Props) {
               <View style={[styles.confidenceDot, { backgroundColor: getConfidenceColor() }]} />
             </View>
             <View style={styles.confidenceTrack}>
-              <View style={[styles.confidenceFill, { width: `${ocrConfidence}%` as any, backgroundColor: getConfidenceColor() }]} />
+              <View
+                style={[
+                  styles.confidenceFill,
+                  {
+                    width: `${Math.round(ocrConfidence)}%` as DimensionValue,
+                    backgroundColor: getConfidenceColor(),
+                  },
+                ]}
+              />
             </View>
           </View>
         )}
@@ -873,5 +959,47 @@ const styles = StyleSheet.create({
     fontSize: Typography.lg,
     fontWeight: Typography.bold,
     color: Colors.textPrimary,
+  },
+  documentPickerCard: {
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius.xl,
+    padding: Spacing.base,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: Spacing.base,
+    ...Shadow.sm,
+  },
+  documentPickerTitle: {
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    color: Colors.textPrimary,
+    marginBottom: 4,
+  },
+  documentPickerSub: {
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
+    marginBottom: Spacing.md,
+  },
+  pickerBtnsRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  pickerBtn: {
+    flex: 1,
+    backgroundColor: Colors.bgElevated,
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.md,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  pickerBtnIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  pickerBtnText: {
+    fontSize: Typography.xs,
+    color: Colors.textPrimary,
+    fontWeight: Typography.bold,
   },
 });

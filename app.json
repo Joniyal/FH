@@ -14,6 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
+      "newArchEnabled": false,
       "infoPlist": {
         "NSCameraUsageDescription": "Allow FH to scan forms with camera.",
         "NSPhotoLibraryUsageDescription": "Allow FH to pick form images from your photo library.",
