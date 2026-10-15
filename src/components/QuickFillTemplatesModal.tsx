@@ -76,7 +76,12 @@ export default function QuickFillTemplatesModal({
               <Text style={styles.title}>Quick-fill Templates</Text>
               <Text style={styles.subtitle}>Select a common Indian form to auto-fill instantly</Text>
             </View>
-            <Pressable style={styles.closeBtn} onPress={onClose}>
+            <Pressable
+              style={({ pressed }) => [styles.closeBtn, pressed && { opacity: 0.7 }]}
+              onPress={onClose}
+              accessibilityRole="button"
+              accessibilityLabel="Close template selector"
+            >
               <Text style={styles.closeText}>✕</Text>
             </Pressable>
           </View>
@@ -85,8 +90,13 @@ export default function QuickFillTemplatesModal({
             {COMMON_TEMPLATES.map((tpl) => (
               <Pressable
                 key={tpl.id}
-                style={styles.templateCard}
+                style={({ pressed }) => [
+                  styles.templateCard,
+                  pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+                ]}
                 onPress={() => onSelectTemplate(tpl)}
+                accessibilityRole="button"
+                accessibilityLabel={`${tpl.title}, ${tpl.category}`}
               >
                 <View style={styles.cardHeader}>
                   <Text style={styles.icon}>{tpl.icon}</Text>

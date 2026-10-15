@@ -12,6 +12,8 @@ A React Native Android application that enables users to capture, digitize, and 
 - **🔒 Personal Vault**: Secure local storage for sensitive documents
 - **📋 Form Preview**: Review and edit extracted data before saving
 - **⚡ Fast Processing**: Optimized performance for seamless user experience
+- **📋 Quick-Fill Templates**: Preset templates for common Indian forms with instant auto-fill
+- **📂 Form History**: Persistent history of filled and scanned forms
 
 ## Tech Stack
 
@@ -86,6 +88,11 @@ cd android
 Run test suite:
 ```bash
 npm test
+```
+
+Run TypeScript type check:
+```bash
+npm run typecheck
 ```
 
 ## Contributing
