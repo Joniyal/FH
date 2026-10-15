@@ -1,21 +1,24 @@
 import React, { ReactNode } from 'react';
-import { StyleSheet, View, ViewStyle } from 'react-native';
+import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing } from '../theme/tokens';
 
 type GlassCardProps = {
   children: ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   variant?: 'default' | 'accent' | 'glow';
+  testID?: string;
 };
 
 export default function GlassCard({
   children,
   style,
   variant = 'default',
+  testID,
 }: GlassCardProps) {
   return (
     <View
+      testID={testID}
       style={[
         styles.card,
         variant === 'accent' && styles.accentBorder,
