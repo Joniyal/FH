@@ -29,10 +29,15 @@ export default function BottomNavBar({ activeTab, onNavigate }: BottomNavBarProp
             return (
               <Pressable
                 key={tab.key}
-                style={[styles.centerScanBtn, isActive && styles.centerScanBtnActive]}
+                style={({ pressed }) => [
+                  styles.centerScanBtn,
+                  isActive && styles.centerScanBtnActive,
+                  pressed && { opacity: 0.85, transform: [{ scale: 0.96 }] },
+                ]}
                 onPress={() => onNavigate(tab.key)}
                 accessibilityRole="button"
                 accessibilityLabel="Scan Form"
+                accessibilityState={{ selected: isActive }}
               >
                 <Text style={styles.centerScanIcon}>📷</Text>
               </Pressable>
@@ -42,9 +47,15 @@ export default function BottomNavBar({ activeTab, onNavigate }: BottomNavBarProp
           return (
             <Pressable
               key={tab.key}
-              style={[styles.tabBtn, isActive && styles.tabBtnActive]}
+              style={({ pressed }) => [
+                styles.tabBtn,
+                isActive && styles.tabBtnActive,
+                pressed && { opacity: 0.75 },
+              ]}
               onPress={() => onNavigate(tab.key)}
               accessibilityRole="button"
+              accessibilityLabel={tab.label}
+              accessibilityState={{ selected: isActive }}
             >
               <Text style={[styles.tabIcon, isActive && styles.tabIconActive]}>
                 {tab.icon}

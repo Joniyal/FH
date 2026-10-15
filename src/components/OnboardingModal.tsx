@@ -71,11 +71,21 @@ export default function OnboardingModal({ visible, onDismiss }: OnboardingModalP
           </View>
 
           <View style={styles.actionRow}>
-            <Pressable style={styles.skipBtn} onPress={handleSkip}>
+            <Pressable
+              style={({ pressed }) => [styles.skipBtn, pressed && styles.btnPressed]}
+              onPress={handleSkip}
+              accessibilityRole="button"
+              accessibilityLabel="Skip onboarding"
+            >
               <Text style={styles.skipText}>Skip</Text>
             </Pressable>
 
-            <Pressable style={styles.nextBtn} onPress={handleNext}>
+            <Pressable
+              style={({ pressed }) => [styles.nextBtn, pressed && styles.btnPressed]}
+              onPress={handleNext}
+              accessibilityRole="button"
+              accessibilityLabel={isLast ? 'Get Started' : 'Next Step'}
+            >
               <Text style={styles.nextText}>{isLast ? 'Get Started 🚀' : 'Next →'}</Text>
             </Pressable>
           </View>
@@ -181,5 +191,8 @@ const styles = StyleSheet.create({
     color: Colors.white,
     fontSize: Typography.base,
     fontWeight: Typography.bold,
+  },
+  btnPressed: {
+    opacity: 0.8,
   },
 });
