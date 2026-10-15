@@ -34,6 +34,11 @@ export async function getPersonalVaultData(): Promise<PersonalVaultData> {
   }
 }
 
+/** Clear all personal vault data from local storage. */
+export async function clearPersonalVaultData(): Promise<void> {
+  await AsyncStorage.removeItem(PERSONAL_VAULT_KEY);
+}
+
 // ── Form History ────────────────────────────────────────────────────────────
 
 const FORM_HISTORY_KEY = 'fh.formHistory.v1';
