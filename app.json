@@ -60,6 +60,11 @@
           "speechRecognitionPermission": "Allow FH to use speech recognition for form help."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c1147153-1441-4019-858a-ef819a32da90"
+      }
+    }
   }
 }
