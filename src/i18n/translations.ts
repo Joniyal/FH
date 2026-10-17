@@ -27,6 +27,7 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     'home.previewLabel': '✅ Filled form preview',
     'home.previewSubLabel': 'See the final filled template',
 
+    'scan.title': 'Scan Document',
     'scan.heading': '📷 Scan Form',
     'scan.subHeading': 'Capture a clear image. Make sure text is visible.',
     'scan.errorCameraSettings': 'Enable camera permission from Settings.',
@@ -163,6 +164,7 @@ export const translations: Record<AppLanguage, Record<string, string>> = {
     'home.previewLabel': '✅ പൂരിപ്പിച്ച ഫോം പ്രിവ്യൂ',
     'home.previewSubLabel': 'അവസാനമായി പൂരിപ്പിച്ച മാതൃക കാണുക',
 
+    'scan.title': 'ഫോം സ്കാൻ ചെയ്യുക',
     'scan.heading': '📷 ഫോം സ്കാൻ ചെയ്യുക',
     'scan.subHeading': 'ചിത്രം വ്യക്തമായി എടുക്കുക. എഴുത്ത് സമമായി കാണണം.',
     'scan.errorCameraSettings': 'ക്യാമറ അനുമതി Settingsൽ നിന്ന് അനുവദിക്കുക.',

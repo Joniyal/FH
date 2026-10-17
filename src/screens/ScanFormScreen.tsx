@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Pressable,
@@ -10,14 +11,25 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+
 // Safely resolve native DocumentScanner module in runtime / test environments
 let DocumentScanner: any = null;
 try {
-  const mod = require('react-native-mlkit-document-scanner');
-  DocumentScanner = mod?.default ?? mod;
+  const mod =
+    require('react-native-document-scanner-plugin').default ||
+    require('react-native-document-scanner-plugin');
+  DocumentScanner = mod;
 } catch {
-  // Handled gracefully in test / dev environments
+  try {
+    const mod =
+      require('react-native-mlkit-document-scanner').default ||
+      require('react-native-mlkit-document-scanner');
+    DocumentScanner = mod;
+  } catch {
+    // Handled gracefully in test / dev environments
+  }
 }
+
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -65,6 +77,44 @@ export default function ScanFormScreen({ navigation }: Props) {
   const [lastOcrResult, setLastOcrResult] = useState<OCRResultData | null>(null);
 
   /**
+   * Direct camera capture fallback
+   */
+  const handleCaptureFromCamera = useCallback(async () => {
+    try {
+      setScreenError('');
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) {
+        setScreenError('Camera permission is required.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 1,
+        allowsEditing: false,
+      });
+
+      if (!result.canceled && result.assets[0]?.uri) {
+        const asset = result.assets[0];
+        setSelectedImageUri(asset.uri);
+        setFileName('Camera_Scan.jpg');
+
+        setIsProcessing(true);
+        const ocrData = await extractTextFromImage(asset.uri);
+        setIsProcessing(false);
+        setLastOcrResult(ocrData);
+
+        navigation.navigate('OCRResult', {
+          imageUri: asset.uri,
+        });
+      }
+    } catch (e) {
+      setScreenError(e instanceof Error ? e.message : 'Error capturing from camera');
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [navigation]);
+
+  /**
    * STEP 2: NATIVE GOOGLE ML KIT DOCUMENT SCANNER TRIGGER
    * Launches Google's native ML Kit Document Scanner activity.
    */
@@ -74,7 +124,16 @@ export default function ScanFormScreen({ navigation }: Props) {
       setIsScanning(true);
 
       if (!DocumentScanner || typeof DocumentScanner.scanDocument !== 'function') {
-        throw new Error('Google ML Kit DocumentScanner native module is not initialized or linked.');
+        Alert.alert(
+          'Rebuild Required for ML Kit Native Scanner',
+          'The newly installed native ML Kit document scanner requires a native APK rebuild to link the Android binary. Would you like to use Camera or Gallery in the meantime?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: '📷 Camera', onPress: handleCaptureFromCamera },
+            { text: '🖼️ Gallery', onPress: () => handlePickFromGallery() },
+          ]
+        );
+        return;
       }
 
       // Trigger ML Kit Native Document Scanner
@@ -82,6 +141,8 @@ export default function ScanFormScreen({ navigation }: Props) {
         scannerMode: 'full',
         letUserAdjustCrop: true,
         format: 'jpeg',
+        croppedImageQuality: 100,
+        responseType: 'imageFilePath',
       });
 
       if (result?.scannedImages && result.scannedImages.length > 0) {
@@ -113,7 +174,7 @@ export default function ScanFormScreen({ navigation }: Props) {
       setIsScanning(false);
       setIsProcessing(false);
     }
-  }, [navigation, showToast]);
+  }, [handleCaptureFromCamera, navigation, showToast]);
 
   /**
    * Pick document or form image from device gallery

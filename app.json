@@ -59,7 +59,8 @@
           "microphonePermission": "Allow FH to use microphone for voice input.",
           "speechRecognitionPermission": "Allow FH to use speech recognition for form help."
         }
-      ]
+      ],
+      "react-native-document-scanner-plugin"
     ],
     "extra": {
       "eas": {
