@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -23,8 +23,8 @@ import { useToast } from '../components/Toast';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ScanForm'>;
 
-type ScanDocType = 'form' | 'id_card' | 'document';
-type FilterType = 'original' | 'magic' | 'bw' | 'grayscale';
+type ScanDocType = 'form' | 'id_card' | 'receipt' | 'document';
+type FilterType = 'original' | 'magic' | 'sharpen' | 'bw' | 'grayscale';
 
 export default function ScanFormScreen({ navigation }: Props) {
   const { t } = useLanguage();
@@ -47,6 +47,11 @@ export default function ScanFormScreen({ navigation }: Props) {
   const [documentDetected, setDocumentDetected] = useState<boolean>(true);
   const [rotationDegrees, setRotationDegrees] = useState<number>(0);
   const [activeFilter, setActiveFilter] = useState<FilterType>('magic');
+
+  // Post-capture interactive edge & size adjustment (in % inset)
+  const [cropInsetX, setCropInsetX] = useState<number>(6);
+  const [cropInsetY, setCropInsetY] = useState<number>(8);
+  const [activeCropPreset, setActiveCropPreset] = useState<'a4' | 'id_card' | 'receipt' | 'full'>('a4');
 
   const { showToast } = useToast();
 
@@ -123,6 +128,33 @@ export default function ScanFormScreen({ navigation }: Props) {
     return permission.granted;
   }, [cameraPermission, requestCameraPermission]);
 
+  const applyCropPreset = useCallback((preset: 'a4' | 'id_card' | 'receipt' | 'full') => {
+    setActiveCropPreset(preset);
+    switch (preset) {
+      case 'id_card':
+        setCropInsetX(4);
+        setCropInsetY(22);
+        showToast('Fitted to ID / License ratio (1.58:1) 🪪', 'info');
+        break;
+      case 'receipt':
+        setCropInsetX(18);
+        setCropInsetY(5);
+        showToast('Fitted to Receipt slip ratio (1:2.2) 🧾', 'info');
+        break;
+      case 'full':
+        setCropInsetX(0);
+        setCropInsetY(0);
+        showToast('Full frame selected 🔲', 'info');
+        break;
+      case 'a4':
+      default:
+        setCropInsetX(6);
+        setCropInsetY(8);
+        showToast('Fitted to A4 document ratio (1:1.41) 📄', 'info');
+        break;
+    }
+  }, [showToast]);
+
   const handleCapture = useCallback(async () => {
     try {
       setScreenError('');
@@ -151,6 +183,10 @@ export default function ScanFormScreen({ navigation }: Props) {
           setFileName('Scanned_Document.jpg');
           setShowCamera(false);
           setRotationDegrees(0);
+          // Set initial crop preset matching docType
+          if (docType === 'id_card') applyCropPreset('id_card');
+          else if (docType === 'receipt') applyCropPreset('receipt');
+          else applyCropPreset('a4');
           showToast('Document captured! 📄', 'success');
         }
       } else {
@@ -161,7 +197,7 @@ export default function ScanFormScreen({ navigation }: Props) {
     } finally {
       setCapturing(false);
     }
-  }, [batchMode, batchPages.length, cameraPermission, ensureCameraPermission, showToast, t]);
+  }, [applyCropPreset, batchMode, batchPages.length, cameraPermission, docType, ensureCameraPermission, showToast, t]);
 
   const handleCaptureRef = useRef(handleCapture);
   handleCaptureRef.current = handleCapture;
@@ -204,11 +240,12 @@ export default function ScanFormScreen({ navigation }: Props) {
         setFileName(result.assets[0].fileName || 'Gallery_Image.jpg');
         setShowCamera(false);
         setRotationDegrees(0);
+        applyCropPreset(docType === 'id_card' ? 'id_card' : 'a4');
       }
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : t('scan.errorGalleryOpen'));
     }
-  }, [t]);
+  }, [applyCropPreset, docType, t]);
 
   const handleUploadDocument = useCallback(async () => {
     try {
@@ -224,11 +261,12 @@ export default function ScanFormScreen({ navigation }: Props) {
         setFileName(file.name || 'Document.pdf');
         setShowCamera(false);
         setRotationDegrees(0);
+        applyCropPreset('a4');
       }
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : 'Error selecting document');
     }
-  }, []);
+  }, [applyCropPreset]);
 
   const handleRotate = useCallback(() => {
     setRotationDegrees((prev) => (prev + 90) % 360);
@@ -241,11 +279,82 @@ export default function ScanFormScreen({ navigation }: Props) {
 
   const handleProceedToAutoFill = useCallback(() => {
     if (!selectedImageUri) return;
-    navigation.navigate('OCRResult', { imageUri: selectedImageUri });
-  }, [navigation, selectedImageUri]);
+    navigation.navigate('OCRResult', {
+      imageUri: selectedImageUri,
+      filter: activeFilter,
+      docSize: docType === 'id_card' ? 'id_card' : docType === 'receipt' ? 'receipt' : 'a4',
+      cropBox: {
+        x: cropInsetX,
+        y: cropInsetY,
+        width: 100 - 2 * cropInsetX,
+        height: 100 - 2 * cropInsetY,
+      },
+    });
+  }, [activeFilter, cropInsetX, cropInsetY, docType, navigation, selectedImageUri]);
+
+  // Adjust crop bounds nudge (+ / -)
+  const handleNudgeCrop = useCallback((delta: number) => {
+    setCropInsetX((prev) => Math.min(25, Math.max(0, prev + delta)));
+    setCropInsetY((prev) => Math.min(25, Math.max(0, prev + delta)));
+  }, []);
 
   const isPdf = fileName.toLowerCase().endsWith('.pdf');
   const hasImage = Boolean(selectedImageUri);
+
+  // Dynamic viewfinder frame geometry based on docType
+  const docFrameStyle = useMemo(() => {
+    switch (docType) {
+      case 'id_card':
+        return {
+          top: 75,
+          bottom: 75,
+          left: 18,
+          right: 18,
+          borderRadius: Radius.lg,
+        };
+      case 'receipt':
+        return {
+          top: 18,
+          bottom: 18,
+          left: 48,
+          right: 48,
+          borderRadius: Radius.md,
+        };
+      case 'document':
+        return {
+          top: 16,
+          bottom: 22,
+          left: 12,
+          right: 12,
+          borderRadius: Radius.md,
+        };
+      case 'form':
+      default:
+        return {
+          top: 24,
+          bottom: 30,
+          left: 24,
+          right: 24,
+          borderRadius: Radius.md,
+        };
+    }
+  }, [docType]);
+
+  const beamTravelRange = docType === 'id_card' ? [10, 200] : docType === 'receipt' ? [10, 320] : [10, 290];
+
+  const guideText = useMemo(() => {
+    switch (docType) {
+      case 'id_card':
+        return '🪪 ID Card · Center Aadhaar / Driving License';
+      case 'receipt':
+        return '🧾 Receipt · Keep slip within borders';
+      case 'document':
+        return '📑 Custom · Adjust framing to object size';
+      case 'form':
+      default:
+        return '📄 A4 Form · Align document within borders';
+    }
+  }, [docType]);
 
   return (
     <ScrollView
@@ -317,8 +426,8 @@ export default function ScanFormScreen({ navigation }: Props) {
                 </View>
               )}
 
-              {/* Document Bounding Frame */}
-              <View style={styles.docFrame} pointerEvents="none">
+              {/* Adaptive Document Sizing Bounding Frame */}
+              <View style={[styles.docFrame, docFrameStyle]} pointerEvents="none">
                 {/* 4 Corner Pins with L-brackets */}
                 <View style={styles.corner_TL} />
                 <View style={styles.corner_TR} />
@@ -334,7 +443,7 @@ export default function ScanFormScreen({ navigation }: Props) {
                         {
                           translateY: scanBeamAnim.interpolate({
                             inputRange: [0, 1],
-                            outputRange: [10, 290],
+                            outputRange: beamTravelRange,
                           }),
                         },
                       ],
@@ -380,9 +489,7 @@ export default function ScanFormScreen({ navigation }: Props) {
 
               {/* Document detection feedback badge */}
               <View style={styles.detectionBadge}>
-                <Text style={styles.detectionBadgeText}>
-                  {documentDetected ? t('scan.docDetected') : t('scan.searchingDoc')}
-                </Text>
+                <Text style={styles.detectionBadgeText}>{guideText}</Text>
               </View>
             </View>
           ) : (
@@ -395,20 +502,28 @@ export default function ScanFormScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Mode Selector Tabs (Form / ID Card / Document) */}
+          {/* Mode Selector Tabs (Form A4 / ID Card / Receipt / General) */}
           <View style={styles.docTypeTabs}>
-            {(['form', 'id_card', 'document'] as ScanDocType[]).map((type) => (
+            {(['form', 'id_card', 'receipt', 'document'] as ScanDocType[]).map((type) => (
               <Pressable
                 key={type}
                 style={[styles.docTypeTab, docType === type && styles.docTypeTabActive]}
-                onPress={() => setDocType(type)}
+                onPress={() => {
+                  setDocType(type);
+                  if (type === 'id_card') showToast('Switched to ID Card / License Mode (1.58:1) 🪪', 'info');
+                  else if (type === 'receipt') showToast('Switched to Receipt / Bill Mode 🧾', 'info');
+                  else if (type === 'form') showToast('Switched to A4 Form Mode 📄', 'info');
+                  else showToast('Switched to Custom Document Mode 📑', 'info');
+                }}
               >
                 <Text style={[styles.docTypeTabText, docType === type && styles.docTypeTabTextActive]}>
                   {type === 'form'
-                    ? t('scan.modeForm')
+                    ? '📄 A4 Form'
                     : type === 'id_card'
-                    ? t('scan.modeId')
-                    : t('scan.modeDoc')}
+                    ? '🪪 ID Card'
+                    : type === 'receipt'
+                    ? '🧾 Receipt'
+                    : '📑 Custom'}
                 </Text>
               </Pressable>
             ))}
@@ -419,7 +534,7 @@ export default function ScanFormScreen({ navigation }: Props) {
         <View style={styles.reviewBox}>
           <View style={styles.reviewHeader}>
             <View>
-              <Text style={styles.reviewTitle}>{t('scan.enhanceTitle')}</Text>
+              <Text style={styles.reviewTitle}>Refine, Sharpen & Crop</Text>
               <Text style={styles.reviewSubtitle}>{fileName}</Text>
             </View>
             <Pressable style={styles.rotateBtn} onPress={handleRotate}>
@@ -427,7 +542,7 @@ export default function ScanFormScreen({ navigation }: Props) {
             </Pressable>
           </View>
 
-          {/* Document Canvas */}
+          {/* Document Canvas with Sharpening & Interactive Crop Box */}
           <View style={styles.canvasContainer}>
             {isPdf ? (
               <View style={styles.pdfCard}>
@@ -446,8 +561,33 @@ export default function ScanFormScreen({ navigation }: Props) {
               >
                 <Image source={{ uri: selectedImageUri }} style={styles.reviewImage} resizeMode="cover" />
 
-                {/* Perspective Crop Overlay */}
-                <View style={styles.perspectiveOverlay} pointerEvents="none">
+                {/* Real-time Sharpening & Visual Filter Simulation Overlay */}
+                {activeFilter === 'magic' && (
+                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayMagic]} pointerEvents="none" />
+                )}
+                {activeFilter === 'sharpen' && (
+                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlaySharpen]} pointerEvents="none" />
+                )}
+                {activeFilter === 'bw' && (
+                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayBw]} pointerEvents="none" />
+                )}
+                {activeFilter === 'grayscale' && (
+                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayGray]} pointerEvents="none" />
+                )}
+
+                {/* Perspective & Interactive Document Crop Box */}
+                <View
+                  style={[
+                    styles.interactiveCropBox,
+                    {
+                      top: `${cropInsetY}%`,
+                      bottom: `${cropInsetY}%`,
+                      left: `${cropInsetX}%`,
+                      right: `${cropInsetX}%`,
+                    },
+                  ]}
+                  pointerEvents="none"
+                >
                   <View style={[styles.cropPin, styles.cropPinTL]} />
                   <View style={[styles.cropPin, styles.cropPinTR]} />
                   <View style={[styles.cropPin, styles.cropPinBL]} />
@@ -458,21 +598,103 @@ export default function ScanFormScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* Enhancement Filters */}
+          {/* Quick Document Sizing & Crop Presets */}
+          {!isPdf && (
+            <View style={styles.cropSection}>
+              <View style={styles.cropHeaderRow}>
+                <Text style={styles.filterSectionTitle}>Adjust Document Size / Framing:</Text>
+                <Text style={styles.cropDimensionsBadge}>
+                  {activeCropPreset === 'id_card'
+                    ? '1.58:1 (ID Card)'
+                    : activeCropPreset === 'receipt'
+                    ? '1:2.2 (Receipt)'
+                    : activeCropPreset === 'full'
+                    ? 'Full Image'
+                    : '1:1.41 (A4 Form)'}
+                </Text>
+              </View>
+
+              <View style={styles.cropPresetRow}>
+                <Pressable
+                  style={[styles.presetBtn, activeCropPreset === 'a4' && styles.presetBtnActive]}
+                  onPress={() => applyCropPreset('a4')}
+                >
+                  <Text style={[styles.presetBtnText, activeCropPreset === 'a4' && styles.presetBtnTextActive]}>
+                    📄 Fit A4
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.presetBtn, activeCropPreset === 'id_card' && styles.presetBtnActive]}
+                  onPress={() => applyCropPreset('id_card')}
+                >
+                  <Text style={[styles.presetBtnText, activeCropPreset === 'id_card' && styles.presetBtnTextActive]}>
+                    🪪 ID Card
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.presetBtn, activeCropPreset === 'receipt' && styles.presetBtnActive]}
+                  onPress={() => applyCropPreset('receipt')}
+                >
+                  <Text style={[styles.presetBtnText, activeCropPreset === 'receipt' && styles.presetBtnTextActive]}>
+                    🧾 Receipt
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.presetBtn, activeCropPreset === 'full' && styles.presetBtnActive]}
+                  onPress={() => applyCropPreset('full')}
+                >
+                  <Text style={[styles.presetBtnText, activeCropPreset === 'full' && styles.presetBtnTextActive]}>
+                    🔲 Full
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Edge Nudge Controls */}
+              <View style={styles.cropNudgeRow}>
+                <Pressable style={styles.cropNudgeBtn} onPress={() => handleNudgeCrop(-3)}>
+                  <Text style={styles.cropNudgeBtnText}>➕ Expand Box</Text>
+                </Pressable>
+                <Pressable style={styles.cropNudgeBtn} onPress={() => handleNudgeCrop(3)}>
+                  <Text style={styles.cropNudgeBtnText}>➖ Inset Box</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.cropNudgeBtn}
+                  onPress={() => applyCropPreset(activeCropPreset)}
+                >
+                  <Text style={styles.cropNudgeBtnText}>↺ Reset</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
+
+          {/* Enhancement & Sharpening Filters */}
           {!isPdf && (
             <View style={styles.filterBar}>
-              <Text style={styles.filterSectionTitle}>Scan Filter:</Text>
+              <View style={styles.filterHeaderRow}>
+                <Text style={styles.filterSectionTitle}>Text Clarity & Sharpen Filter:</Text>
+                <View style={styles.sharpenActiveBadge}>
+                  <Text style={styles.sharpenActiveText}>✨ Sharpening Active</Text>
+                </View>
+              </View>
+
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScroll}>
                 {[
-                  { key: 'magic', label: t('scan.filterMagic') },
-                  { key: 'original', label: t('scan.filterOriginal') },
-                  { key: 'bw', label: t('scan.filterBw') },
-                  { key: 'grayscale', label: t('scan.filterGray') },
+                  { key: 'magic', label: '✨ Magic Color (Sharpened)' },
+                  { key: 'sharpen', label: '🔍 Ultra Crisp Text' },
+                  { key: 'bw', label: '📄 Clean B&W' },
+                  { key: 'grayscale', label: '🔘 Grayscale' },
+                  { key: 'original', label: '📷 Original' },
                 ].map((f) => (
                   <Pressable
                     key={f.key}
                     style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
-                    onPress={() => setActiveFilter(f.key as FilterType)}
+                    onPress={() => {
+                      setActiveFilter(f.key as FilterType);
+                      showToast(`Applied ${f.label}!`, 'info');
+                    }}
                   >
                     <Text style={[styles.filterChipText, activeFilter === f.key && styles.filterChipTextActive]}>
                       {f.label}
@@ -489,7 +711,7 @@ export default function ScanFormScreen({ navigation }: Props) {
               <Text style={styles.retakeBtnText}>{t('scan.retake')}</Text>
             </Pressable>
             <Pressable style={styles.autoFillPrimaryBtn} onPress={handleProceedToAutoFill}>
-              <Text style={styles.autoFillPrimaryBtnText}>{t('scan.autoFillAction')}  ➡️</Text>
+              <Text style={styles.autoFillPrimaryBtnText}>⚡ Continue to OCR & Extract Text ➡️</Text>
             </Pressable>
           </View>
         </View>
@@ -937,6 +1159,103 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     padding: 16,
   },
+  interactiveCropBox: {
+    position: 'absolute',
+  },
+  filterOverlayMagic: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(232, 145, 58, 0.4)',
+  },
+  filterOverlaySharpen: {
+    backgroundColor: 'rgba(45, 212, 191, 0.05)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(45, 212, 191, 0.5)',
+  },
+  filterOverlayBw: {
+    backgroundColor: 'rgba(0, 0, 0, 0.25)',
+  },
+  filterOverlayGray: {
+    backgroundColor: 'rgba(100, 116, 139, 0.2)',
+  },
+  cropSection: {
+    marginBottom: Spacing.md,
+  },
+  cropHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  cropDimensionsBadge: {
+    fontSize: Typography.xs,
+    color: Colors.accentLight,
+    fontWeight: Typography.bold,
+  },
+  cropPresetRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+    marginBottom: Spacing.xs,
+  },
+  presetBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  presetBtnActive: {
+    backgroundColor: Colors.primaryDark,
+    borderColor: Colors.primaryLight,
+  },
+  presetBtnText: {
+    fontSize: Typography.xs,
+    color: Colors.textSecondary,
+    fontWeight: Typography.semibold,
+  },
+  presetBtnTextActive: {
+    color: Colors.white,
+    fontWeight: Typography.bold,
+  },
+  cropNudgeRow: {
+    flexDirection: 'row',
+    gap: Spacing.xs,
+  },
+  cropNudgeBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.bgElevated,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  cropNudgeBtnText: {
+    fontSize: Typography.xs,
+    color: Colors.textMuted,
+    fontWeight: Typography.medium,
+  },
+  filterHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  sharpenActiveBadge: {
+    backgroundColor: Colors.successBg,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderWidth: 1,
+    borderColor: Colors.success,
+  },
+  sharpenActiveText: {
+    color: Colors.success,
+    fontSize: 10,
+    fontWeight: Typography.bold,
+  },
   perspectiveBorder: {
     flex: 1,
     borderWidth: 2,
@@ -954,10 +1273,10 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
     zIndex: 10,
   },
-  cropPinTL: { top: 12, left: 12 },
-  cropPinTR: { top: 12, right: 12 },
-  cropPinBL: { bottom: 12, left: 12 },
-  cropPinBR: { bottom: 12, right: 12 },
+  cropPinTL: { top: -9, left: -9 },
+  cropPinTR: { top: -9, right: -9 },
+  cropPinBL: { bottom: -9, left: -9 },
+  cropPinBR: { bottom: -9, right: -9 },
   pdfCard: {
     alignItems: 'center',
     gap: Spacing.sm,

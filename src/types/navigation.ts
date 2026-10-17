@@ -6,6 +6,9 @@ export type RootStackParamList = {
   OCRResult:
     | {
         imageUri?: string;
+        filter?: 'original' | 'magic' | 'sharpen' | 'bw' | 'grayscale';
+        docSize?: 'a4' | 'id_card' | 'receipt' | 'custom';
+        cropBox?: { x: number; y: number; width: number; height: number };
       }
     | undefined;
   PersonalVault: undefined;
