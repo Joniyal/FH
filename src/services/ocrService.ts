@@ -94,19 +94,35 @@ export function parseDocumentData(rawText: string): Partial<PersonalVaultData> {
 }
 
 /**
- * Safely reads a local URI as base64 string using expo-file-system
+ * Safely reads image base64 data without requiring native file system modules
  */
 async function readImageBase64(imageUri: string): Promise<string | null> {
+  if (!imageUri) return null;
+  if (imageUri.startsWith('data:')) {
+    const commaIndex = imageUri.indexOf(',');
+    return commaIndex >= 0 ? imageUri.slice(commaIndex + 1) : imageUri;
+  }
   try {
-    // Dynamic import to allow seamless Jest execution in Node and Metro in React Native
-    const FileSystem = await import('expo-file-system/legacy');
-    if (FileSystem && FileSystem.readAsStringAsync) {
-      return await FileSystem.readAsStringAsync(imageUri, {
-        encoding: FileSystem.EncodingType.Base64,
+    if (typeof fetch === 'function') {
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      return new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const res = reader.result;
+          if (typeof res === 'string') {
+            const comma = res.indexOf(',');
+            resolve(comma >= 0 ? res.slice(comma + 1) : res);
+          } else {
+            resolve(null);
+          }
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
       });
     }
   } catch {
-    // fallback or jest environment
+    // Fallback or jest environment
   }
   return null;
 }

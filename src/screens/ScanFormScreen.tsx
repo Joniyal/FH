@@ -5,10 +5,12 @@ import {
   Easing,
   Image,
   Linking,
+  PanResponder,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -28,11 +30,18 @@ type FilterType = 'original' | 'magic' | 'sharpen' | 'bw' | 'grayscale';
 
 export default function ScanFormScreen({ navigation }: Props) {
   const { t } = useLanguage();
+  const { width: windowWidth } = useWindowDimensions();
+  // Safe concrete pixel dimensions to prevent Android Fresco / Yoga layout collapse
+  const safeWidth = Math.max(320, windowWidth || 360);
+  const canvasWidth = Math.round(Math.min(safeWidth - Spacing.base * 2, 420));
+  const canvasHeight = Math.round(canvasWidth * 1.35); // tall document aspect ratio (4:3 / A4)
+
   const cameraRef = useRef<CameraView | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   // State
   const [selectedImageUri, setSelectedImageUri] = useState<string>('');
+  const [persistentFileUri, setPersistentFileUri] = useState<string>('');
   const [fallbackBase64, setFallbackBase64] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [showCamera, setShowCamera] = useState<boolean>(true);
@@ -41,6 +50,7 @@ export default function ScanFormScreen({ navigation }: Props) {
   const [screenError, setScreenError] = useState<string>('');
   const [showSettingsButton, setShowSettingsButton] = useState<boolean>(false);
   const [capturedDimensions, setCapturedDimensions] = useState<{ width: number; height: number } | null>(null);
+  const [imageVersion, setImageVersion] = useState<number>(1);
 
   // Camera feature states
   const [torchOn, setTorchOn] = useState<boolean>(false);
@@ -52,10 +62,238 @@ export default function ScanFormScreen({ navigation }: Props) {
   const [rotationDegrees, setRotationDegrees] = useState<number>(0);
   const [activeFilter, setActiveFilter] = useState<FilterType>('magic');
 
-  // Post-capture interactive edge & size adjustment (in % inset)
-  const [cropInsetX, setCropInsetX] = useState<number>(6);
-  const [cropInsetY, setCropInsetY] = useState<number>(8);
+  const canvasWidthRef = useRef(canvasWidth);
+  const canvasHeightRef = useRef(canvasHeight);
+  canvasWidthRef.current = canvasWidth;
+  canvasHeightRef.current = canvasHeight;
+
+  // Post-capture interactive 8-point boundary box (pixel coordinates on canvas)
+  const initialLeft = Math.round(canvasWidth * 0.06);
+  const initialTop = Math.round(canvasHeight * 0.08);
+  const initialRight = Math.round(canvasWidth * 0.94);
+  const initialBottom = Math.round(canvasHeight * 0.92);
+
+  const [boxLeft, setBoxLeft] = useState<number>(initialLeft);
+  const [boxTop, setBoxTop] = useState<number>(initialTop);
+  const [boxRight, setBoxRight] = useState<number>(initialRight);
+  const [boxBottom, setBoxBottom] = useState<number>(initialBottom);
+  const [activeHandle, setActiveHandle] = useState<string | null>(null);
   const [activeCropPreset, setActiveCropPreset] = useState<'a4' | 'id_card' | 'receipt' | 'full'>('a4');
+
+  const boxRef = useRef({
+    left: initialLeft,
+    top: initialTop,
+    right: initialRight,
+    bottom: initialBottom,
+  });
+  const dragStartRef = useRef({
+    left: initialLeft,
+    top: initialTop,
+    right: initialRight,
+    bottom: initialBottom,
+  });
+
+  const updateBoxBounds = useCallback((left: number, top: number, right: number, bottom: number) => {
+    boxRef.current = { left, top, right, bottom };
+    setBoxLeft(left);
+    setBoxTop(top);
+    setBoxRight(right);
+    setBoxBottom(bottom);
+  }, []);
+
+  // Update canvas bounds if screen dimensions change
+  useEffect(() => {
+    if (canvasWidth <= 0 || canvasHeight <= 0) return;
+    const cW = canvasWidth;
+    const cH = canvasHeight;
+    canvasWidthRef.current = cW;
+    canvasHeightRef.current = cH;
+    setBoxLeft((prev) => (prev > 0 && prev < cW - 40 ? prev : Math.round(cW * 0.06)));
+    setBoxRight((prev) => (prev > 40 && prev <= cW ? prev : Math.round(cW * 0.94)));
+    setBoxTop((prev) => (prev > 0 && prev < cH - 40 ? prev : Math.round(cH * 0.08)));
+    setBoxBottom((prev) => (prev > 40 && prev <= cH ? prev : Math.round(cH * 0.92)));
+  }, [canvasHeight, canvasWidth]);
+
+  // 8 Interactive PanResponders for Adobe Scan Boundary Adjustment
+  const panTL = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('TL');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newLeft = Math.max(0, Math.min(start.right - 40, Math.round(start.left + gestureState.dx)));
+          const newTop = Math.max(0, Math.min(start.bottom - 40, Math.round(start.top + gestureState.dy)));
+          boxRef.current.left = newLeft;
+          boxRef.current.top = newTop;
+          setBoxLeft(newLeft);
+          setBoxTop(newTop);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
+
+  const panTR = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('TR');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newRight = Math.min(canvasWidthRef.current, Math.max(start.left + 40, Math.round(start.right + gestureState.dx)));
+          const newTop = Math.max(0, Math.min(start.bottom - 40, Math.round(start.top + gestureState.dy)));
+          boxRef.current.right = newRight;
+          boxRef.current.top = newTop;
+          setBoxRight(newRight);
+          setBoxTop(newTop);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
+
+  const panBL = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('BL');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newLeft = Math.max(0, Math.min(start.right - 40, Math.round(start.left + gestureState.dx)));
+          const newBottom = Math.min(canvasHeightRef.current, Math.max(start.top + 40, Math.round(start.bottom + gestureState.dy)));
+          boxRef.current.left = newLeft;
+          boxRef.current.bottom = newBottom;
+          setBoxLeft(newLeft);
+          setBoxBottom(newBottom);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
+
+  const panBR = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('BR');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newRight = Math.min(canvasWidthRef.current, Math.max(start.left + 40, Math.round(start.right + gestureState.dx)));
+          const newBottom = Math.min(canvasHeightRef.current, Math.max(start.top + 40, Math.round(start.bottom + gestureState.dy)));
+          boxRef.current.right = newRight;
+          boxRef.current.bottom = newBottom;
+          setBoxRight(newRight);
+          setBoxBottom(newBottom);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
+
+  const panTop = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('TOP');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newTop = Math.max(0, Math.min(start.bottom - 40, Math.round(start.top + gestureState.dy)));
+          boxRef.current.top = newTop;
+          setBoxTop(newTop);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
+
+  const panBottom = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('BOTTOM');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newBottom = Math.min(canvasHeightRef.current, Math.max(start.top + 40, Math.round(start.bottom + gestureState.dy)));
+          boxRef.current.bottom = newBottom;
+          setBoxBottom(newBottom);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
+
+  const panLeft = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('LEFT');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newLeft = Math.max(0, Math.min(start.right - 40, Math.round(start.left + gestureState.dx)));
+          boxRef.current.left = newLeft;
+          setBoxLeft(newLeft);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
+
+  const panRight = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: () => {
+          dragStartRef.current = { ...boxRef.current };
+          setActiveHandle('RIGHT');
+        },
+        onPanResponderMove: (_, gestureState) => {
+          const start = dragStartRef.current;
+          const newRight = Math.min(canvasWidthRef.current, Math.max(start.left + 40, Math.round(start.right + gestureState.dx)));
+          boxRef.current.right = newRight;
+          setBoxRight(newRight);
+        },
+        onPanResponderRelease: () => setActiveHandle(null),
+        onPanResponderTerminate: () => setActiveHandle(null),
+      }),
+    []
+  );
 
   const { showToast } = useToast();
 
@@ -209,31 +447,53 @@ export default function ScanFormScreen({ navigation }: Props) {
   const applyCropPreset = useCallback(
     (preset: 'a4' | 'id_card' | 'receipt' | 'full', silent = false) => {
       setActiveCropPreset(preset);
+      const cW = Math.max(280, canvasWidthRef.current || canvasWidth || 320);
+      const cH = Math.max(380, canvasHeightRef.current || canvasHeight || 432);
+      let l = Math.round(cW * 0.06);
+      let r = Math.round(cW * 0.94);
+      let t = Math.round(cH * 0.08);
+      let b = Math.round(cH * 0.92);
       switch (preset) {
-        case 'id_card':
-          setCropInsetX(4);
-          setCropInsetY(22);
+        case 'id_card': {
+          const w = Math.round(cW * 0.92);
+          const h = Math.round(w / 1.586);
+          l = Math.round((cW - w) / 2);
+          r = l + w;
+          t = Math.round((cH - h) / 2);
+          b = t + h;
           if (!silent) showToast('Fitted to ID / License ratio (1.58:1) 🪪', 'info');
           break;
-        case 'receipt':
-          setCropInsetX(18);
-          setCropInsetY(5);
+        }
+        case 'receipt': {
+          const w = Math.round(cW * 0.68);
+          l = Math.round((cW - w) / 2);
+          r = l + w;
+          t = Math.round(cH * 0.04);
+          b = Math.round(cH * 0.96);
           if (!silent) showToast('Fitted to Receipt slip ratio (1:2.2) 🧾', 'info');
           break;
-        case 'full':
-          setCropInsetX(0);
-          setCropInsetY(0);
+        }
+        case 'full': {
+          l = 6;
+          r = cW - 6;
+          t = 6;
+          b = cH - 6;
           if (!silent) showToast('Full frame selected 🔲', 'info');
           break;
+        }
         case 'a4':
-        default:
-          setCropInsetX(6);
-          setCropInsetY(8);
+        default: {
+          l = Math.round(cW * 0.06);
+          r = Math.round(cW * 0.94);
+          t = Math.round(cH * 0.08);
+          b = Math.round(cH * 0.92);
           if (!silent) showToast('Fitted to A4 document ratio (1:1.41) 📄', 'info');
           break;
+        }
       }
+      updateBoxBounds(l, t, r, b);
     },
-    [showToast]
+    [canvasHeight, canvasWidth, showToast, updateBoxBounds]
   );
 
   const handleCapture = useCallback(async () => {
@@ -252,38 +512,41 @@ export default function ScanFormScreen({ navigation }: Props) {
       }
       setCapturing(true);
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.95,
+        quality: 0.9,
         base64: true,
         shutterSound: false,
         skipProcessing: false,
       });
 
       if (photo?.uri || photo?.base64) {
-        let normalizedUri = photo.uri || '';
+        const base64DataUri = photo.base64 ? `data:image/jpeg;base64,${photo.base64}` : '';
+        let fileUri = photo.uri || '';
         if (
-          normalizedUri &&
-          !normalizedUri.startsWith('file://') &&
-          !normalizedUri.startsWith('content://') &&
-          !normalizedUri.startsWith('data:')
+          fileUri &&
+          !fileUri.startsWith('file://') &&
+          !fileUri.startsWith('content://') &&
+          !fileUri.startsWith('data:')
         ) {
-          normalizedUri = `file://${normalizedUri}`;
+          fileUri = `file://${fileUri}`;
         }
-        const base64Uri = photo.base64 ? `data:image/jpeg;base64,${photo.base64}` : '';
-        const finalUri = normalizedUri || base64Uri;
 
-        setFallbackBase64(base64Uri);
+        // Use fileUri with resizeMethod="resize" on Android so Fresco decodes downsampled image effortlessly
+        const activeDisplayUri = fileUri || base64DataUri;
+        setSelectedImageUri(activeDisplayUri);
+        setPersistentFileUri(fileUri || activeDisplayUri);
+        setFallbackBase64(base64DataUri || fileUri);
+        setImageVersion((v) => v + 1);
+
         if (photo.width && photo.height) {
           setCapturedDimensions({ width: photo.width, height: photo.height });
         }
 
         if (batchMode) {
           const nextLength = batchPages.length + 1;
-          setBatchPages((prev) => [...prev, finalUri]);
-          setSelectedImageUri(finalUri);
+          setBatchPages((prev) => [...prev, activeDisplayUri]);
           setFileName(`Batch_Page_${nextLength}.jpg`);
           showToast(`Page ${nextLength} captured! 📑`, 'success');
         } else {
-          setSelectedImageUri(finalUri);
           setFileName('Scanned_Document.jpg');
           setShowCamera(false);
           setRotationDegrees(0);
@@ -372,14 +635,31 @@ export default function ScanFormScreen({ navigation }: Props) {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         quality: 1,
-        allowsEditing: true,
+        allowsEditing: false,
       });
       if (!result.canceled && result.assets[0]?.uri) {
-        setSelectedImageUri(result.assets[0].uri);
-        setFileName(result.assets[0].fileName || 'Gallery_Image.jpg');
+        const asset = result.assets[0];
+        setSelectedImageUri(asset.uri);
+        setPersistentFileUri(asset.uri);
+        setFileName(asset.fileName || 'Gallery_Image.jpg');
         setShowCamera(false);
         setRotationDegrees(0);
-        applyCropPreset(docType === 'id_card' ? 'id_card' : 'a4');
+        setImageVersion((v) => v + 1);
+
+        if (asset.width && asset.height) {
+          setCapturedDimensions({ width: asset.width, height: asset.height });
+          const ratio = Math.max(asset.width, asset.height) / Math.min(asset.width, asset.height);
+          const isLandscape = asset.width > asset.height;
+          if (isLandscape || (ratio >= 1.45 && ratio <= 1.75)) {
+            applyCropPreset('id_card', true);
+          } else if (ratio > 1.9) {
+            applyCropPreset('receipt', true);
+          } else {
+            applyCropPreset('a4', true);
+          }
+        } else {
+          applyCropPreset(docType === 'id_card' ? 'id_card' : 'a4', true);
+        }
       }
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : t('scan.errorGalleryOpen'));
@@ -397,10 +677,12 @@ export default function ScanFormScreen({ navigation }: Props) {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const file = result.assets[0];
         setSelectedImageUri(file.uri);
+        setPersistentFileUri(file.uri);
         setFileName(file.name || 'Document.pdf');
         setShowCamera(false);
         setRotationDegrees(0);
-        applyCropPreset('a4');
+        setImageVersion((v) => v + 1);
+        applyCropPreset('a4', true);
       }
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : 'Error selecting document');
@@ -413,29 +695,70 @@ export default function ScanFormScreen({ navigation }: Props) {
 
   const handleRetake = useCallback(() => {
     setSelectedImageUri('');
+    setPersistentFileUri('');
+    setFallbackBase64('');
     setShowCamera(true);
+    setActiveHandle(null);
   }, []);
 
+  // Adobe Scan intelligent boundary auto-detection
+  const handleAutoDetect = useCallback(() => {
+    let preset: 'a4' | 'id_card' | 'receipt' | 'full' = 'a4';
+    if (capturedDimensions) {
+      const { width, height } = capturedDimensions;
+      const ratio = Math.max(width, height) / Math.min(width, height);
+      const isLandscape = width > height;
+      if (isLandscape || (ratio >= 1.45 && ratio <= 1.75)) {
+        preset = 'id_card';
+      } else if (ratio > 1.9) {
+        preset = 'receipt';
+      } else {
+        preset = 'a4';
+      }
+    } else if (docType === 'id_card' || autoDetectedPreset === 'id_card') {
+      preset = 'id_card';
+    } else if (docType === 'receipt' || autoDetectedPreset === 'receipt') {
+      preset = 'receipt';
+    }
+    applyCropPreset(preset, false);
+    showToast(`Adobe Scan: Edges detected & snapped to ${preset.toUpperCase()}! 🎯`, 'success');
+  }, [applyCropPreset, autoDetectedPreset, capturedDimensions, docType, showToast]);
+
   const handleProceedToAutoFill = useCallback(() => {
-    if (!selectedImageUri) return;
+    const finalUri = persistentFileUri || selectedImageUri;
+    if (!finalUri) return;
+    const cW = canvasWidthRef.current;
+    const cH = canvasHeightRef.current;
+    const cur = boxRef.current;
+    const cropX = Math.round((cur.left / cW) * 100);
+    const cropY = Math.round((cur.top / cH) * 100);
+    const cropW = Math.round(((cur.right - cur.left) / cW) * 100);
+    const cropH = Math.round(((cur.bottom - cur.top) / cH) * 100);
+
     navigation.navigate('OCRResult', {
-      imageUri: selectedImageUri,
+      imageUri: finalUri,
       filter: activeFilter,
       docSize: docType === 'id_card' ? 'id_card' : docType === 'receipt' ? 'receipt' : 'a4',
       cropBox: {
-        x: cropInsetX,
-        y: cropInsetY,
-        width: 100 - 2 * cropInsetX,
-        height: 100 - 2 * cropInsetY,
+        x: cropX,
+        y: cropY,
+        width: cropW,
+        height: cropH,
       },
     });
-  }, [activeFilter, cropInsetX, cropInsetY, docType, navigation, selectedImageUri]);
+  }, [activeFilter, docType, navigation, persistentFileUri, selectedImageUri]);
 
   // Adjust crop bounds nudge (+ / -)
   const handleNudgeCrop = useCallback((delta: number) => {
-    setCropInsetX((prev) => Math.min(25, Math.max(0, prev + delta)));
-    setCropInsetY((prev) => Math.min(25, Math.max(0, prev + delta)));
-  }, []);
+    const cW = canvasWidthRef.current;
+    const cH = canvasHeightRef.current;
+    const current = boxRef.current;
+    const l = Math.max(0, Math.min(current.right - 40, current.left - delta));
+    const r = Math.min(cW, Math.max(current.left + 40, current.right + delta));
+    const t = Math.max(0, Math.min(current.bottom - 40, current.top - delta));
+    const b = Math.min(cH, Math.max(current.top + 40, current.bottom + delta));
+    updateBoxBounds(l, t, r, b);
+  }, [updateBoxBounds]);
 
   const isPdf = fileName.toLowerCase().endsWith('.pdf');
   const hasImage = Boolean(selectedImageUri);
@@ -476,6 +799,7 @@ export default function ScanFormScreen({ navigation }: Props) {
       contentContainerStyle={styles.contentContainer}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
+      scrollEnabled={!activeHandle}
     >
       {/* Screen Header */}
       <View style={styles.topHeader}>
@@ -665,20 +989,30 @@ export default function ScanFormScreen({ navigation }: Props) {
           </View>
         </View>
       ) : (
-        /* Review & Enhance Post-Capture Screen */
+        /* Review & Adjust Boundaries Screen (Adobe Scan Style) */
         <View style={styles.reviewBox}>
+          {/* Adobe Scan Header Bar */}
           <View style={styles.reviewHeader}>
-            <View>
-              <Text style={styles.reviewTitle}>Refine, Sharpen & Crop</Text>
-              <Text style={styles.reviewSubtitle}>{fileName}</Text>
+            <View style={{ flex: 1 }}>
+              <View style={styles.adobeBrandRow}>
+                <View style={styles.adobeBlueBadge}>
+                  <Text style={styles.adobeBlueBadgeText}>ADOBE SCAN STYLE</Text>
+                </View>
+                <Text style={styles.adobeDetectionPill}>🎯 Edges Detected</Text>
+              </View>
+              <Text style={styles.reviewTitle}>Adjust Boundaries</Text>
+              <Text style={styles.reviewSubtitle}>
+                {fileName} · Document edges auto-aligned
+              </Text>
             </View>
+
             <Pressable style={styles.rotateBtn} onPress={handleRotate}>
               <Text style={styles.rotateBtnText}>↻ 90°</Text>
             </Pressable>
           </View>
 
-          {/* Document Canvas with Sharpening & Interactive Crop Box */}
-          <View style={styles.canvasContainer}>
+          {/* Document Canvas with Sharpening & Adobe Scan 8-Point Boundary Box */}
+          <View style={[styles.canvasContainer, { width: canvasWidth, height: canvasHeight }]}>
             {isPdf ? (
               <View style={styles.pdfCard}>
                 <Text style={styles.pdfIcon}>📑</Text>
@@ -688,136 +1022,254 @@ export default function ScanFormScreen({ navigation }: Props) {
                 </View>
               </View>
             ) : (
-              <View
-                style={[
-                  styles.imageWrapper,
-                  { transform: [{ rotate: `${rotationDegrees}deg` }] },
-                ]}
-              >
-                {/* Image loading indicator */}
-                {imageLoading && (
-                  <View style={styles.imageLoadingOverlay}>
-                    <ActivityIndicator size="large" color={Colors.primary} />
-                    <Text style={styles.imageLoadingText}>Rendering document...</Text>
-                  </View>
-                )}
-
-                <Image
-                  key={`${selectedImageUri}_${rotationDegrees}`}
-                  source={{ uri: selectedImageUri }}
-                  style={styles.reviewImage}
-                  resizeMode="contain"
-                  onLoadStart={() => setImageLoading(true)}
-                  onLoadEnd={() => setImageLoading(false)}
-                  onError={(err) => {
-                    console.warn('Review image load error:', err.nativeEvent.error);
-                    setImageLoading(false);
-                    if (fallbackBase64 && selectedImageUri !== fallbackBase64) {
-                      setSelectedImageUri(fallbackBase64);
-                    }
-                  }}
-                />
-
-                {/* Real-time Sharpening & Visual Filter Simulation Overlay */}
-                {activeFilter === 'magic' && (
-                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayMagic]} pointerEvents="none" />
-                )}
-                {activeFilter === 'sharpen' && (
-                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlaySharpen]} pointerEvents="none" />
-                )}
-                {activeFilter === 'bw' && (
-                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayBw]} pointerEvents="none" />
-                )}
-                {activeFilter === 'grayscale' && (
-                  <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayGray]} pointerEvents="none" />
-                )}
-
-                {/* Perspective & Interactive Document Crop Box */}
+              <>
+                {/* 1. Underlying Captured Image */}
                 <View
                   style={[
-                    styles.interactiveCropBox,
+                    styles.imageWrapper,
                     {
-                      top: `${cropInsetY}%`,
-                      bottom: `${cropInsetY}%`,
-                      left: `${cropInsetX}%`,
-                      right: `${cropInsetX}%`,
+                      width: canvasWidth,
+                      height: canvasHeight,
+                      transform: [{ rotate: `${rotationDegrees}deg` }],
+                    },
+                  ]}
+                >
+                  {/* Image loading indicator */}
+                  {imageLoading && (
+                    <View style={styles.imageLoadingOverlay} pointerEvents="none">
+                      <ActivityIndicator size="large" color="#00A4E4" />
+                      <Text style={styles.imageLoadingText}>Rendering document...</Text>
+                    </View>
+                  )}
+
+                  <Image
+                    key={`doc_preview_${imageVersion}_${rotationDegrees}`}
+                    source={{ uri: selectedImageUri || persistentFileUri || fallbackBase64 }}
+                    style={{ width: '100%', height: '100%' }}
+                    resizeMode="contain"
+                    fadeDuration={0}
+                    onLoadStart={() => setImageLoading(false)}
+                    onLoad={() => setImageLoading(false)}
+                    onLoadEnd={() => setImageLoading(false)}
+                    onError={(err) => {
+                      console.warn('Review image load error:', err.nativeEvent.error);
+                      setImageLoading(false);
+                      if (fallbackBase64 && selectedImageUri !== fallbackBase64) {
+                        setSelectedImageUri(fallbackBase64);
+                      }
+                    }}
+                  />
+
+                  {/* Real-time Sharpening & Visual Filter Simulation Overlay */}
+                  {activeFilter === 'magic' && (
+                    <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayMagic]} pointerEvents="none" />
+                  )}
+                  {activeFilter === 'sharpen' && (
+                    <View style={[StyleSheet.absoluteFillObject, styles.filterOverlaySharpen]} pointerEvents="none" />
+                  )}
+                  {activeFilter === 'bw' && (
+                    <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayBw]} pointerEvents="none" />
+                  )}
+                  {activeFilter === 'grayscale' && (
+                    <View style={[StyleSheet.absoluteFillObject, styles.filterOverlayGray]} pointerEvents="none" />
+                  )}
+                </View>
+
+                {/* 2. Adobe Scan 4 Outer Dark Masks */}
+                <View
+                  style={[
+                    styles.adobeOuterMask,
+                    {
+                      top: 0,
+                      left: 0,
+                      width: canvasWidth,
+                      height: Math.max(0, Math.min(canvasHeight, boxTop)),
                     },
                   ]}
                   pointerEvents="none"
+                />
+                <View
+                  style={[
+                    styles.adobeOuterMask,
+                    {
+                      top: Math.max(0, Math.min(canvasHeight, boxBottom)),
+                      left: 0,
+                      width: canvasWidth,
+                      height: Math.max(0, canvasHeight - Math.max(0, boxBottom)),
+                    },
+                  ]}
+                  pointerEvents="none"
+                />
+                <View
+                  style={[
+                    styles.adobeOuterMask,
+                    {
+                      top: Math.max(0, Math.min(canvasHeight, boxTop)),
+                      left: 0,
+                      width: Math.max(0, Math.min(canvasWidth, boxLeft)),
+                      height: Math.max(0, boxBottom - boxTop),
+                    },
+                  ]}
+                  pointerEvents="none"
+                />
+                <View
+                  style={[
+                    styles.adobeOuterMask,
+                    {
+                      top: Math.max(0, Math.min(canvasHeight, boxTop)),
+                      left: Math.max(0, Math.min(canvasWidth, boxRight)),
+                      width: Math.max(0, canvasWidth - Math.max(0, boxRight)),
+                      height: Math.max(0, boxBottom - boxTop),
+                    },
+                  ]}
+                  pointerEvents="none"
+                />
+
+                {/* 3. Adobe Scan 8-Point Draggable Boundary Box */}
+                <View
+                  style={[
+                    styles.adobeBoundaryBox,
+                    {
+                      left: Math.max(0, Math.min(canvasWidth - 40, boxLeft)),
+                      top: Math.max(0, Math.min(canvasHeight - 40, boxTop)),
+                      width: Math.max(40, Math.min(canvasWidth, boxRight - boxLeft)),
+                      height: Math.max(40, Math.min(canvasHeight, boxBottom - boxTop)),
+                    },
+                  ]}
                 >
-                  {/* Glowing 4 Corner pins with inner pulse */}
-                  <View style={[styles.cropPin, styles.cropPinTL]}>
-                    <View style={styles.cropPinCore} />
+                  {/* 4 Corner Magnets */}
+                  <View
+                    {...panTL.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeCornerMagnet,
+                      styles.magnetTL,
+                      activeHandle === 'TL' && styles.adobeCornerMagnetActive,
+                    ]}
+                  >
+                    <View style={styles.adobeCornerMagnetCore} />
                   </View>
-                  <View style={[styles.cropPin, styles.cropPinTR]}>
-                    <View style={styles.cropPinCore} />
+                  <View
+                    {...panTR.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeCornerMagnet,
+                      styles.magnetTR,
+                      activeHandle === 'TR' && styles.adobeCornerMagnetActive,
+                    ]}
+                  >
+                    <View style={styles.adobeCornerMagnetCore} />
                   </View>
-                  <View style={[styles.cropPin, styles.cropPinBL]}>
-                    <View style={styles.cropPinCore} />
+                  <View
+                    {...panBL.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeCornerMagnet,
+                      styles.magnetBL,
+                      activeHandle === 'BL' && styles.adobeCornerMagnetActive,
+                    ]}
+                  >
+                    <View style={styles.adobeCornerMagnetCore} />
                   </View>
-                  <View style={[styles.cropPin, styles.cropPinBR]}>
-                    <View style={styles.cropPinCore} />
+                  <View
+                    {...panBR.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeCornerMagnet,
+                      styles.magnetBR,
+                      activeHandle === 'BR' && styles.adobeCornerMagnetActive,
+                    ]}
+                  >
+                    <View style={styles.adobeCornerMagnetCore} />
                   </View>
 
-                  {/* 4 Edge Midpoint Handles for CamScanner precision */}
-                  <View style={[styles.edgePin, styles.edgePinTop]} />
-                  <View style={[styles.edgePin, styles.edgePinBottom]} />
-                  <View style={[styles.edgePin, styles.edgePinLeft]} />
-                  <View style={[styles.edgePin, styles.edgePinRight]} />
+                  {/* 4 Midpoint Edge Pills */}
+                  <View
+                    {...panTop.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeEdgePillHorizontal,
+                      styles.pillTop,
+                      activeHandle === 'TOP' && styles.adobeEdgePillActive,
+                    ]}
+                  >
+                    <View style={styles.adobeEdgePillInnerH} />
+                  </View>
+                  <View
+                    {...panBottom.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeEdgePillHorizontal,
+                      styles.pillBottom,
+                      activeHandle === 'BOTTOM' && styles.adobeEdgePillActive,
+                    ]}
+                  >
+                    <View style={styles.adobeEdgePillInnerH} />
+                  </View>
+                  <View
+                    {...panLeft.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeEdgePillVertical,
+                      styles.pillLeft,
+                      activeHandle === 'LEFT' && styles.adobeEdgePillActive,
+                    ]}
+                  >
+                    <View style={styles.adobeEdgePillInnerV} />
+                  </View>
+                  <View
+                    {...panRight.panHandlers}
+                    hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+                    style={[
+                      styles.adobeEdgePillVertical,
+                      styles.pillRight,
+                      activeHandle === 'RIGHT' && styles.adobeEdgePillActive,
+                    ]}
+                  >
+                    <View style={styles.adobeEdgePillInnerV} />
+                  </View>
 
-                  {/* High-visibility magnetic border */}
-                  <View style={styles.perspectiveBorder} />
-
-                  {/* Corner indicator badge */}
-                  <View style={styles.cropFrameBadge}>
-                    <Text style={styles.cropFrameBadgeText}>
+                  {/* Adobe Scan Dimension / Document Type Badge */}
+                  <View style={styles.adobeFrameBadge} pointerEvents="none">
+                    <Text style={styles.adobeFrameBadgeText}>
                       {activeCropPreset === 'id_card'
-                        ? '🪪 ID Card (1.58:1)'
+                        ? '🪪 ID Card · 1.58:1'
                         : activeCropPreset === 'receipt'
-                        ? '🧾 Receipt (1:2.2)'
+                        ? '🧾 Receipt · 1:2.2'
                         : activeCropPreset === 'full'
-                        ? '🔲 Full'
-                        : '📄 A4 Form (1:1.41)'}
+                        ? '🔲 Full Page'
+                        : '📄 A4 Document · 1:1.41'}
                     </Text>
                   </View>
                 </View>
-              </View>
+
+                {/* Floating Adobe Loupe tooltip while dragging */}
+                {activeHandle && (
+                  <View style={styles.adobeLoupeTooltip} pointerEvents="none">
+                    <Text style={styles.adobeLoupeText}>
+                      🔍 {activeHandle} · {Math.round(boxRight - boxLeft)} × {Math.round(boxBottom - boxTop)} px
+                    </Text>
+                  </View>
+                )}
+              </>
             )}
           </View>
 
-          {/* Quick Document Sizing & Crop Presets */}
+
+          {/* Adobe Scan Auto-Alignment Toolbar */}
           {!isPdf && (
             <View style={styles.cropSection}>
               <View style={styles.cropHeaderRow}>
-                <Text style={styles.filterSectionTitle}>Adjust Document Size / Framing:</Text>
+                <Text style={styles.filterSectionTitle}>Boundary Auto-Alignment:</Text>
                 <Pressable
-                  style={styles.autoSnapBtn}
-                  onPress={() => {
-                    if (capturedDimensions) {
-                      const { width, height } = capturedDimensions;
-                      const ratio = Math.max(width, height) / Math.min(width, height);
-                      const isLandscape = width > height;
-                      if (isLandscape || (ratio >= 1.45 && ratio <= 1.75)) {
-                        applyCropPreset('id_card', false);
-                      } else if (ratio > 1.9) {
-                        applyCropPreset('receipt', false);
-                      } else {
-                        applyCropPreset('a4', false);
-                      }
-                    } else if (docType === 'id_card') {
-                      applyCropPreset('id_card', false);
-                    } else if (docType === 'receipt') {
-                      applyCropPreset('receipt', false);
-                    } else {
-                      applyCropPreset('a4', false);
-                    }
-                    showToast('Boundary auto-aligned to document edges! 🎯', 'success');
-                  }}
+                  style={styles.adobeAutoDetectBtn}
+                  onPress={handleAutoDetect}
                 >
-                  <Text style={styles.autoSnapBtnText}>🤖 Auto-Align Boundary</Text>
+                  <Text style={styles.adobeAutoDetectBtnText}>🤖 Auto-Detect Edges</Text>
                 </Pressable>
               </View>
 
+              {/* Document Size Presets */}
               <View style={styles.cropPresetRow}>
                 <Pressable
                   style={[styles.presetBtn, activeCropPreset === 'a4' && styles.presetBtnActive]}
@@ -851,7 +1303,7 @@ export default function ScanFormScreen({ navigation }: Props) {
                   onPress={() => applyCropPreset('full')}
                 >
                   <Text style={[styles.presetBtnText, activeCropPreset === 'full' && styles.presetBtnTextActive]}>
-                    🔲 Full
+                    🔲 No Crop
                   </Text>
                 </Pressable>
               </View>
@@ -874,11 +1326,11 @@ export default function ScanFormScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Enhancement & Sharpening Filters */}
+          {/* Enhancement & Sharpening Filters (Adobe Scan Style) */}
           {!isPdf && (
             <View style={styles.filterBar}>
               <View style={styles.filterHeaderRow}>
-                <Text style={styles.filterSectionTitle}>Text Clarity & Sharpen Filter:</Text>
+                <Text style={styles.filterSectionTitle}>Adobe Scan Filters & Clarity:</Text>
                 <View style={styles.sharpenActiveBadge}>
                   <Text style={styles.sharpenActiveText}>✨ Sharpening Active</Text>
                 </View>
@@ -1377,32 +1829,29 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   canvasContainer: {
-    width: '100%',
-    height: 350,
     borderRadius: Radius.lg,
-    overflow: 'hidden',
-    backgroundColor: '#070b14',
+    backgroundColor: '#0a0f1d',
     marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    borderWidth: 2,
+    borderColor: '#2563eb',
     position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
+    alignSelf: 'center',
   },
   imageWrapper: {
+    position: 'relative',
     width: '100%',
     height: '100%',
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderRadius: Radius.lg,
+    overflow: 'hidden',
   },
   reviewImage: {
-    width: '100%',
-    height: '100%',
+    position: 'absolute',
+    top: 0,
+    left: 0,
   },
   imageLoadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(7, 11, 20, 0.85)',
+    backgroundColor: 'rgba(7, 11, 20, 0.45)',
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 20,
@@ -1413,17 +1862,151 @@ const styles = StyleSheet.create({
     fontSize: Typography.xs,
     fontWeight: Typography.medium,
   },
-  perspectiveOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    padding: 16,
+  adobeBrandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
-  interactiveCropBox: {
+  adobeBlueBadge: {
+    backgroundColor: '#1473E6',
+    borderRadius: Radius.full,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  adobeBlueBadgeText: {
+    color: Colors.white,
+    fontSize: 9,
+    fontWeight: Typography.bold,
+    letterSpacing: 0.5,
+  },
+  adobeDetectionPill: {
+    color: '#00E5FF',
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+  },
+  adobeOuterMask: {
     position: 'absolute',
+    backgroundColor: 'rgba(5, 10, 20, 0.65)',
+    zIndex: 20,
+  },
+  adobeBoundaryBox: {
+    position: 'absolute',
+    borderWidth: 3,
+    borderColor: '#00E5FF',
+    backgroundColor: 'rgba(0, 229, 255, 0.06)',
+    borderRadius: 4,
+    zIndex: 40,
+  },
+  adobeCornerMagnet: {
+    position: 'absolute',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 3.5,
+    borderColor: '#00E5FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 60,
+  },
+  adobeCornerMagnetActive: {
+    transform: [{ scale: 1.25 }],
+    borderColor: '#38bdf8',
+    backgroundColor: '#f0f9ff',
+  },
+  adobeCornerMagnetCore: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#00E5FF',
+  },
+  magnetTL: { top: -16, left: -16 },
+  magnetTR: { top: -16, right: -16 },
+  magnetBL: { bottom: -16, left: -16 },
+  magnetBR: { bottom: -16, right: -16 },
+  adobeEdgePillHorizontal: {
+    position: 'absolute',
+    width: 38,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#00E5FF',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 55,
+  },
+  pillTop: { top: -6, left: '50%', marginLeft: -19 },
+  pillBottom: { bottom: -6, left: '50%', marginLeft: -19 },
+  adobeEdgePillVertical: {
+    position: 'absolute',
+    width: 12,
+    height: 38,
+    borderRadius: 6,
+    backgroundColor: '#00E5FF',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 55,
+  },
+  pillLeft: { left: -6, top: '50%', marginTop: -19 },
+  pillRight: { right: -6, top: '50%', marginTop: -19 },
+  adobeEdgePillActive: {
+    transform: [{ scale: 1.2 }],
+    backgroundColor: '#38bdf8',
+  },
+  adobeLoupeTooltip: {
+    position: 'absolute',
+    top: 14,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(10, 15, 29, 0.95)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    borderWidth: 1.5,
+    borderColor: '#00A4E4',
+    zIndex: 70,
+  },
+  adobeLoupeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: Typography.bold,
+    letterSpacing: 0.3,
+  },
+  adobeEdgePillInnerH: {
+    width: 14,
+    height: 2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 1,
+  },
+  adobeEdgePillInnerV: {
+    width: 2,
+    height: 14,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 1,
+  },
+  adobeFrameBadge: {
+    position: 'absolute',
+    bottom: 10,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(20, 115, 230, 0.92)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  adobeFrameBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: Typography.bold,
   },
   filterOverlayMagic: {
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(20, 115, 230, 0.08)',
     borderWidth: 1.5,
-    borderColor: 'rgba(232, 145, 58, 0.4)',
+    borderColor: 'rgba(20, 115, 230, 0.4)',
   },
   filterOverlaySharpen: {
     backgroundColor: 'rgba(45, 212, 191, 0.05)',
@@ -1443,18 +2026,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
-  autoSnapBtn: {
-    backgroundColor: Colors.accentMuted,
-    paddingVertical: 4,
-    paddingHorizontal: Spacing.sm,
+  adobeAutoDetectBtn: {
+    backgroundColor: '#1473E6',
+    paddingVertical: 5,
+    paddingHorizontal: Spacing.md,
     borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.accent,
+    shadowColor: '#1473E6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  autoSnapBtnText: {
-    color: Colors.accentLight,
+  adobeAutoDetectBtnText: {
+    color: Colors.white,
     fontSize: Typography.xs,
     fontWeight: Typography.bold,
   },
@@ -1473,8 +2059,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   presetBtnActive: {
-    backgroundColor: Colors.primaryDark,
-    borderColor: Colors.primaryLight,
+    backgroundColor: '#1473E6',
+    borderColor: '#00A4E4',
   },
   presetBtnText: {
     fontSize: Typography.xs,
@@ -1519,93 +2105,6 @@ const styles = StyleSheet.create({
   },
   sharpenActiveText: {
     color: Colors.success,
-    fontSize: 10,
-    fontWeight: Typography.bold,
-  },
-  perspectiveBorder: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderWidth: 2,
-    borderColor: Colors.accent,
-    borderRadius: Radius.sm,
-    backgroundColor: 'rgba(45, 212, 191, 0.06)',
-  },
-  cropPin: {
-    position: 'absolute',
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: Colors.white,
-    borderWidth: 2.5,
-    borderColor: Colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 15,
-    ...Shadow.glow,
-  },
-  cropPinCore: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.primary,
-  },
-  cropPinTL: { top: -11, left: -11 },
-  cropPinTR: { top: -11, right: -11 },
-  cropPinBL: { bottom: -11, left: -11 },
-  cropPinBR: { bottom: -11, right: -11 },
-  edgePin: {
-    position: 'absolute',
-    backgroundColor: Colors.accent,
-    zIndex: 12,
-  },
-  edgePinTop: {
-    top: -3,
-    left: '50%',
-    marginLeft: -10,
-    width: 20,
-    height: 6,
-    borderRadius: 3,
-  },
-  edgePinBottom: {
-    bottom: -3,
-    left: '50%',
-    marginLeft: -10,
-    width: 20,
-    height: 6,
-    borderRadius: 3,
-  },
-  edgePinLeft: {
-    left: -3,
-    top: '50%',
-    marginTop: -10,
-    width: 6,
-    height: 20,
-    borderRadius: 3,
-  },
-  edgePinRight: {
-    right: -3,
-    top: '50%',
-    marginTop: -10,
-    width: 6,
-    height: 20,
-    borderRadius: 3,
-  },
-  cropFrameBadge: {
-    position: 'absolute',
-    bottom: 8,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(10, 14, 27, 0.85)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.accent,
-  },
-  cropFrameBadgeText: {
-    color: Colors.accentLight,
     fontSize: 10,
     fontWeight: Typography.bold,
   },
