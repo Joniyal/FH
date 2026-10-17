@@ -141,13 +141,11 @@ export default function ScanFormScreen({ navigation }: Props) {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.95 });
       if (photo?.uri) {
         if (batchMode) {
-          setBatchPages((prev) => {
-            const next = [...prev, photo.uri];
-            showToast(`Page ${next.length} captured! 📑`, 'success');
-            return next;
-          });
+          const nextLength = batchPages.length + 1;
+          setBatchPages((prev) => [...prev, photo.uri]);
           setSelectedImageUri(photo.uri);
-          setFileName(`Batch_Page_${batchPages.length + 1}.jpg`);
+          setFileName(`Batch_Page_${nextLength}.jpg`);
+          showToast(`Page ${nextLength} captured! 📑`, 'success');
         } else {
           setSelectedImageUri(photo.uri);
           setFileName('Scanned_Document.jpg');
