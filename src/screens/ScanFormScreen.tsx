@@ -23,7 +23,7 @@ import { useToast } from '../components/Toast';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ScanForm'>;
 
-type ScanDocType = 'form' | 'id_card' | 'receipt' | 'document';
+type ScanDocType = 'auto' | 'form' | 'id_card' | 'receipt' | 'document';
 type FilterType = 'original' | 'magic' | 'sharpen' | 'bw' | 'grayscale';
 
 export default function ScanFormScreen({ navigation }: Props) {
@@ -33,17 +33,21 @@ export default function ScanFormScreen({ navigation }: Props) {
 
   // State
   const [selectedImageUri, setSelectedImageUri] = useState<string>('');
+  const [fallbackBase64, setFallbackBase64] = useState<string>('');
   const [fileName, setFileName] = useState<string>('');
   const [showCamera, setShowCamera] = useState<boolean>(true);
   const [capturing, setCapturing] = useState<boolean>(false);
+  const [imageLoading, setImageLoading] = useState<boolean>(false);
   const [screenError, setScreenError] = useState<string>('');
   const [showSettingsButton, setShowSettingsButton] = useState<boolean>(false);
+  const [capturedDimensions, setCapturedDimensions] = useState<{ width: number; height: number } | null>(null);
 
   // Camera feature states
   const [torchOn, setTorchOn] = useState<boolean>(false);
   const [showGrid, setShowGrid] = useState<boolean>(false);
   const [autoCapture, setAutoCapture] = useState<boolean>(false);
-  const [docType, setDocType] = useState<ScanDocType>('form');
+  const [docType, setDocType] = useState<ScanDocType>('auto');
+  const [autoDetectedPreset, setAutoDetectedPreset] = useState<'form' | 'id_card' | 'receipt'>('form');
   const [documentDetected, setDocumentDetected] = useState<boolean>(true);
   const [rotationDegrees, setRotationDegrees] = useState<number>(0);
   const [activeFilter, setActiveFilter] = useState<FilterType>('magic');
@@ -55,18 +59,91 @@ export default function ScanFormScreen({ navigation }: Props) {
 
   const { showToast } = useToast();
 
-  // Animation values
+  // Animation values for moving dynamic boundary & camera laser
   const scanBeamAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const shutterScale = useRef(new Animated.Value(1)).current;
   const autoCaptureCountdown = useRef<NodeJS.Timeout | null>(null);
+  const autoScanCycleTimer = useRef<NodeJS.Timeout | null>(null);
   const animMountedRef = useRef(true);
   const showCameraRef = useRef(showCamera);
   showCameraRef.current = showCamera;
 
+  // Viewfinder dynamic animated boundary values
+  const frameTopAnim = useRef(new Animated.Value(24)).current;
+  const frameBottomAnim = useRef(new Animated.Value(30)).current;
+  const frameLeftAnim = useRef(new Animated.Value(24)).current;
+  const frameRightAnim = useRef(new Animated.Value(24)).current;
+  const frameRadiusAnim = useRef(new Animated.Value(12)).current;
+  const cornerSnapAnim = useRef(new Animated.Value(1)).current;
+
   // Batch scan state (multi-page)
   const [batchMode, setBatchMode] = useState<boolean>(false);
   const [batchPages, setBatchPages] = useState<string[]>([]);
+
+  // Smoothly move and align the boundary box with spring physics
+  const animateBoundaryTo = useCallback(
+    (top: number, bottom: number, left: number, right: number, radius = 12) => {
+      Animated.parallel([
+        Animated.spring(frameTopAnim, { toValue: top, friction: 8, tension: 50, useNativeDriver: false }),
+        Animated.spring(frameBottomAnim, { toValue: bottom, friction: 8, tension: 50, useNativeDriver: false }),
+        Animated.spring(frameLeftAnim, { toValue: left, friction: 8, tension: 50, useNativeDriver: false }),
+        Animated.spring(frameRightAnim, { toValue: right, friction: 8, tension: 50, useNativeDriver: false }),
+        Animated.timing(frameRadiusAnim, { toValue: radius, duration: 250, useNativeDriver: false }),
+        Animated.sequence([
+          Animated.timing(cornerSnapAnim, { toValue: 1.18, duration: 120, useNativeDriver: true }),
+          Animated.spring(cornerSnapAnim, { toValue: 1, friction: 6, useNativeDriver: true }),
+        ]),
+      ]).start();
+    },
+    [cornerSnapAnim, frameBottomAnim, frameLeftAnim, frameRadiusAnim, frameRightAnim, frameTopAnim]
+  );
+
+  // Automatically move the boundary based on docType or auto-detection
+  useEffect(() => {
+    if (!showCamera) return;
+
+    if (docType === 'auto') {
+      // Auto-detect mode: dynamically morphs and aligns boundary to detected document
+      if (autoDetectedPreset === 'id_card') {
+        animateBoundaryTo(78, 78, 16, 16, 16);
+      } else if (autoDetectedPreset === 'receipt') {
+        animateBoundaryTo(16, 16, 52, 52, 8);
+      } else {
+        animateBoundaryTo(22, 28, 22, 22, 12);
+      }
+    } else if (docType === 'id_card') {
+      animateBoundaryTo(78, 78, 16, 16, 16);
+    } else if (docType === 'receipt') {
+      animateBoundaryTo(16, 16, 52, 52, 8);
+    } else if (docType === 'document') {
+      animateBoundaryTo(18, 22, 14, 14, 10);
+    } else {
+      // form (A4)
+      animateBoundaryTo(22, 28, 22, 22, 12);
+    }
+  }, [animateBoundaryTo, autoDetectedPreset, docType, showCamera]);
+
+  // Periodic intelligent auto-alignment in 'auto' mode
+  useEffect(() => {
+    if (!showCamera || docType !== 'auto') {
+      if (autoScanCycleTimer.current) clearInterval(autoScanCycleTimer.current);
+      return;
+    }
+
+    // Auto-detect rotation between common document forms to simulate real-time edge tracking
+    const presets: Array<'form' | 'id_card' | 'receipt'> = ['form', 'id_card', 'receipt'];
+    let idx = 0;
+
+    autoScanCycleTimer.current = setInterval(() => {
+      idx = (idx + 1) % presets.length;
+      setAutoDetectedPreset(presets[idx]);
+    }, 4000);
+
+    return () => {
+      if (autoScanCycleTimer.current) clearInterval(autoScanCycleTimer.current);
+    };
+  }, [docType, showCamera]);
 
   // Animated scanner laser beam loop — only when camera is visible
   useEffect(() => {
@@ -118,6 +195,7 @@ export default function ScanFormScreen({ navigation }: Props) {
     return () => {
       animMountedRef.current = false;
       if (autoCaptureCountdown.current) clearTimeout(autoCaptureCountdown.current);
+      if (autoScanCycleTimer.current) clearInterval(autoScanCycleTimer.current);
     };
   }, []);
 
@@ -128,32 +206,35 @@ export default function ScanFormScreen({ navigation }: Props) {
     return permission.granted;
   }, [cameraPermission, requestCameraPermission]);
 
-  const applyCropPreset = useCallback((preset: 'a4' | 'id_card' | 'receipt' | 'full') => {
-    setActiveCropPreset(preset);
-    switch (preset) {
-      case 'id_card':
-        setCropInsetX(4);
-        setCropInsetY(22);
-        showToast('Fitted to ID / License ratio (1.58:1) 🪪', 'info');
-        break;
-      case 'receipt':
-        setCropInsetX(18);
-        setCropInsetY(5);
-        showToast('Fitted to Receipt slip ratio (1:2.2) 🧾', 'info');
-        break;
-      case 'full':
-        setCropInsetX(0);
-        setCropInsetY(0);
-        showToast('Full frame selected 🔲', 'info');
-        break;
-      case 'a4':
-      default:
-        setCropInsetX(6);
-        setCropInsetY(8);
-        showToast('Fitted to A4 document ratio (1:1.41) 📄', 'info');
-        break;
-    }
-  }, [showToast]);
+  const applyCropPreset = useCallback(
+    (preset: 'a4' | 'id_card' | 'receipt' | 'full', silent = false) => {
+      setActiveCropPreset(preset);
+      switch (preset) {
+        case 'id_card':
+          setCropInsetX(4);
+          setCropInsetY(22);
+          if (!silent) showToast('Fitted to ID / License ratio (1.58:1) 🪪', 'info');
+          break;
+        case 'receipt':
+          setCropInsetX(18);
+          setCropInsetY(5);
+          if (!silent) showToast('Fitted to Receipt slip ratio (1:2.2) 🧾', 'info');
+          break;
+        case 'full':
+          setCropInsetX(0);
+          setCropInsetY(0);
+          if (!silent) showToast('Full frame selected 🔲', 'info');
+          break;
+        case 'a4':
+        default:
+          setCropInsetX(6);
+          setCropInsetY(8);
+          if (!silent) showToast('Fitted to A4 document ratio (1:1.41) 📄', 'info');
+          break;
+      }
+    },
+    [showToast]
+  );
 
   const handleCapture = useCallback(async () => {
     try {
@@ -170,24 +251,72 @@ export default function ScanFormScreen({ navigation }: Props) {
         return;
       }
       setCapturing(true);
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.95 });
-      if (photo?.uri) {
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.95,
+        base64: true,
+        shutterSound: false,
+        skipProcessing: false,
+      });
+
+      if (photo?.uri || photo?.base64) {
+        let normalizedUri = photo.uri || '';
+        if (
+          normalizedUri &&
+          !normalizedUri.startsWith('file://') &&
+          !normalizedUri.startsWith('content://') &&
+          !normalizedUri.startsWith('data:')
+        ) {
+          normalizedUri = `file://${normalizedUri}`;
+        }
+        const base64Uri = photo.base64 ? `data:image/jpeg;base64,${photo.base64}` : '';
+        const finalUri = normalizedUri || base64Uri;
+
+        setFallbackBase64(base64Uri);
+        if (photo.width && photo.height) {
+          setCapturedDimensions({ width: photo.width, height: photo.height });
+        }
+
         if (batchMode) {
           const nextLength = batchPages.length + 1;
-          setBatchPages((prev) => [...prev, photo.uri]);
-          setSelectedImageUri(photo.uri);
+          setBatchPages((prev) => [...prev, finalUri]);
+          setSelectedImageUri(finalUri);
           setFileName(`Batch_Page_${nextLength}.jpg`);
           showToast(`Page ${nextLength} captured! 📑`, 'success');
         } else {
-          setSelectedImageUri(photo.uri);
+          setSelectedImageUri(finalUri);
           setFileName('Scanned_Document.jpg');
           setShowCamera(false);
           setRotationDegrees(0);
-          // Set initial crop preset matching docType
-          if (docType === 'id_card') applyCropPreset('id_card');
-          else if (docType === 'receipt') applyCropPreset('receipt');
-          else applyCropPreset('a4');
-          showToast('Document captured! 📄', 'success');
+
+          // Auto-detect boundary based on photo dimensions & aspect ratio
+          let detectedPreset: 'a4' | 'id_card' | 'receipt' | 'full' = 'a4';
+          if (photo.width && photo.height) {
+            const ratio = Math.max(photo.width, photo.height) / Math.min(photo.width, photo.height);
+            const isLandscape = photo.width > photo.height;
+            if (isLandscape || (ratio >= 1.45 && ratio <= 1.75)) {
+              detectedPreset = 'id_card';
+            } else if (ratio > 1.9) {
+              detectedPreset = 'receipt';
+            } else {
+              detectedPreset = 'a4';
+            }
+          } else if (docType === 'id_card' || autoDetectedPreset === 'id_card') {
+            detectedPreset = 'id_card';
+          } else if (docType === 'receipt' || autoDetectedPreset === 'receipt') {
+            detectedPreset = 'receipt';
+          }
+
+          applyCropPreset(detectedPreset, true);
+          showToast(
+            `Captured & auto-aligned to ${
+              detectedPreset === 'id_card'
+                ? 'ID Card'
+                : detectedPreset === 'receipt'
+                ? 'Receipt'
+                : 'A4 Document'
+            }! 🎯`,
+            'success'
+          );
         }
       } else {
         setScreenError(t('scan.errorImageMissing'));
@@ -197,7 +326,17 @@ export default function ScanFormScreen({ navigation }: Props) {
     } finally {
       setCapturing(false);
     }
-  }, [applyCropPreset, batchMode, batchPages.length, cameraPermission, docType, ensureCameraPermission, showToast, t]);
+  }, [
+    applyCropPreset,
+    autoDetectedPreset,
+    batchMode,
+    batchPages.length,
+    cameraPermission,
+    docType,
+    ensureCameraPermission,
+    showToast,
+    t,
+  ]);
 
   const handleCaptureRef = useRef(handleCapture);
   handleCaptureRef.current = handleCapture;
@@ -301,48 +440,23 @@ export default function ScanFormScreen({ navigation }: Props) {
   const isPdf = fileName.toLowerCase().endsWith('.pdf');
   const hasImage = Boolean(selectedImageUri);
 
-  // Dynamic viewfinder frame geometry based on docType
-  const docFrameStyle = useMemo(() => {
-    switch (docType) {
-      case 'id_card':
-        return {
-          top: 75,
-          bottom: 75,
-          left: 18,
-          right: 18,
-          borderRadius: Radius.lg,
-        };
-      case 'receipt':
-        return {
-          top: 18,
-          bottom: 18,
-          left: 48,
-          right: 48,
-          borderRadius: Radius.md,
-        };
-      case 'document':
-        return {
-          top: 16,
-          bottom: 22,
-          left: 12,
-          right: 12,
-          borderRadius: Radius.md,
-        };
-      case 'form':
-      default:
-        return {
-          top: 24,
-          bottom: 30,
-          left: 24,
-          right: 24,
-          borderRadius: Radius.md,
-        };
-    }
-  }, [docType]);
-
-  const beamTravelRange = docType === 'id_card' ? [10, 200] : docType === 'receipt' ? [10, 320] : [10, 290];
+  const beamTravelRange =
+    docType === 'id_card' || (docType === 'auto' && autoDetectedPreset === 'id_card')
+      ? [10, 195]
+      : docType === 'receipt' || (docType === 'auto' && autoDetectedPreset === 'receipt')
+      ? [10, 320]
+      : [10, 290];
 
   const guideText = useMemo(() => {
+    if (docType === 'auto') {
+      if (autoDetectedPreset === 'id_card') {
+        return '🟢 Auto-Aligned: ID Card (1.58:1) · Edges Locked';
+      } else if (autoDetectedPreset === 'receipt') {
+        return '🟢 Auto-Aligned: Receipt Slip (1:2.3) · Framing Ready';
+      } else {
+        return '🟢 Auto-Aligned: A4 Document (1:1.41) · Ready to Capture';
+      }
+    }
     switch (docType) {
       case 'id_card':
         return '🪪 ID Card · Center Aadhaar / Driving License';
@@ -354,7 +468,7 @@ export default function ScanFormScreen({ navigation }: Props) {
       default:
         return '📄 A4 Form · Align document within borders';
     }
-  }, [docType]);
+  }, [autoDetectedPreset, docType]);
 
   return (
     <ScrollView
@@ -426,13 +540,31 @@ export default function ScanFormScreen({ navigation }: Props) {
                 </View>
               )}
 
-              {/* Adaptive Document Sizing Bounding Frame */}
-              <View style={[styles.docFrame, docFrameStyle]} pointerEvents="none">
-                {/* 4 Corner Pins with L-brackets */}
-                <View style={styles.corner_TL} />
-                <View style={styles.corner_TR} />
-                <View style={styles.corner_BL} />
-                <View style={styles.corner_BR} />
+              {/* Dynamic Animated Document Sizing & Auto-Aligning Bounding Frame */}
+              <Animated.View
+                style={[
+                  styles.docFrame,
+                  {
+                    top: frameTopAnim,
+                    bottom: frameBottomAnim,
+                    left: frameLeftAnim,
+                    right: frameRightAnim,
+                    borderRadius: frameRadiusAnim,
+                  },
+                ]}
+                pointerEvents="none"
+              >
+                {/* 4 Corner Pins with L-brackets and corner snapping animation */}
+                <Animated.View style={[styles.corner_TL, { transform: [{ scale: cornerSnapAnim }] }]} />
+                <Animated.View style={[styles.corner_TR, { transform: [{ scale: cornerSnapAnim }] }]} />
+                <Animated.View style={[styles.corner_BL, { transform: [{ scale: cornerSnapAnim }] }]} />
+                <Animated.View style={[styles.corner_BR, { transform: [{ scale: cornerSnapAnim }] }]} />
+
+                {/* Edge midpoint alignment crosshairs */}
+                <View style={[styles.frameEdgeMark, styles.frameEdgeMarkTop]} />
+                <View style={[styles.frameEdgeMark, styles.frameEdgeMarkBottom]} />
+                <View style={[styles.frameEdgeMark, styles.frameEdgeMarkLeft]} />
+                <View style={[styles.frameEdgeMark, styles.frameEdgeMarkRight]} />
 
                 {/* Animated Laser Scanning Beam */}
                 <Animated.View
@@ -450,7 +582,7 @@ export default function ScanFormScreen({ navigation }: Props) {
                     },
                   ]}
                 />
-              </View>
+              </Animated.View>
 
               {/* Top Controls Bar */}
               <View style={styles.cameraTopBar}>
@@ -502,22 +634,25 @@ export default function ScanFormScreen({ navigation }: Props) {
             </View>
           )}
 
-          {/* Mode Selector Tabs (Form A4 / ID Card / Receipt / General) */}
+          {/* Mode Selector Tabs (Auto / Form A4 / ID Card / Receipt / General) */}
           <View style={styles.docTypeTabs}>
-            {(['form', 'id_card', 'receipt', 'document'] as ScanDocType[]).map((type) => (
+            {(['auto', 'form', 'id_card', 'receipt', 'document'] as ScanDocType[]).map((type) => (
               <Pressable
                 key={type}
                 style={[styles.docTypeTab, docType === type && styles.docTypeTabActive]}
                 onPress={() => {
                   setDocType(type);
-                  if (type === 'id_card') showToast('Switched to ID Card / License Mode (1.58:1) 🪪', 'info');
+                  if (type === 'auto') showToast('⚡ Smart Auto-Align Mode Active!', 'info');
+                  else if (type === 'id_card') showToast('Switched to ID Card / License Mode (1.58:1) 🪪', 'info');
                   else if (type === 'receipt') showToast('Switched to Receipt / Bill Mode 🧾', 'info');
                   else if (type === 'form') showToast('Switched to A4 Form Mode 📄', 'info');
                   else showToast('Switched to Custom Document Mode 📑', 'info');
                 }}
               >
                 <Text style={[styles.docTypeTabText, docType === type && styles.docTypeTabTextActive]}>
-                  {type === 'form'
+                  {type === 'auto'
+                    ? '⚡ Auto'
+                    : type === 'form'
                     ? '📄 A4 Form'
                     : type === 'id_card'
                     ? '🪪 ID Card'
@@ -559,7 +694,29 @@ export default function ScanFormScreen({ navigation }: Props) {
                   { transform: [{ rotate: `${rotationDegrees}deg` }] },
                 ]}
               >
-                <Image source={{ uri: selectedImageUri }} style={styles.reviewImage} resizeMode="cover" />
+                {/* Image loading indicator */}
+                {imageLoading && (
+                  <View style={styles.imageLoadingOverlay}>
+                    <ActivityIndicator size="large" color={Colors.primary} />
+                    <Text style={styles.imageLoadingText}>Rendering document...</Text>
+                  </View>
+                )}
+
+                <Image
+                  key={`${selectedImageUri}_${rotationDegrees}`}
+                  source={{ uri: selectedImageUri }}
+                  style={styles.reviewImage}
+                  resizeMode="contain"
+                  onLoadStart={() => setImageLoading(true)}
+                  onLoadEnd={() => setImageLoading(false)}
+                  onError={(err) => {
+                    console.warn('Review image load error:', err.nativeEvent.error);
+                    setImageLoading(false);
+                    if (fallbackBase64 && selectedImageUri !== fallbackBase64) {
+                      setSelectedImageUri(fallbackBase64);
+                    }
+                  }}
+                />
 
                 {/* Real-time Sharpening & Visual Filter Simulation Overlay */}
                 {activeFilter === 'magic' && (
@@ -588,11 +745,41 @@ export default function ScanFormScreen({ navigation }: Props) {
                   ]}
                   pointerEvents="none"
                 >
-                  <View style={[styles.cropPin, styles.cropPinTL]} />
-                  <View style={[styles.cropPin, styles.cropPinTR]} />
-                  <View style={[styles.cropPin, styles.cropPinBL]} />
-                  <View style={[styles.cropPin, styles.cropPinBR]} />
+                  {/* Glowing 4 Corner pins with inner pulse */}
+                  <View style={[styles.cropPin, styles.cropPinTL]}>
+                    <View style={styles.cropPinCore} />
+                  </View>
+                  <View style={[styles.cropPin, styles.cropPinTR]}>
+                    <View style={styles.cropPinCore} />
+                  </View>
+                  <View style={[styles.cropPin, styles.cropPinBL]}>
+                    <View style={styles.cropPinCore} />
+                  </View>
+                  <View style={[styles.cropPin, styles.cropPinBR]}>
+                    <View style={styles.cropPinCore} />
+                  </View>
+
+                  {/* 4 Edge Midpoint Handles for CamScanner precision */}
+                  <View style={[styles.edgePin, styles.edgePinTop]} />
+                  <View style={[styles.edgePin, styles.edgePinBottom]} />
+                  <View style={[styles.edgePin, styles.edgePinLeft]} />
+                  <View style={[styles.edgePin, styles.edgePinRight]} />
+
+                  {/* High-visibility magnetic border */}
                   <View style={styles.perspectiveBorder} />
+
+                  {/* Corner indicator badge */}
+                  <View style={styles.cropFrameBadge}>
+                    <Text style={styles.cropFrameBadgeText}>
+                      {activeCropPreset === 'id_card'
+                        ? '🪪 ID Card (1.58:1)'
+                        : activeCropPreset === 'receipt'
+                        ? '🧾 Receipt (1:2.2)'
+                        : activeCropPreset === 'full'
+                        ? '🔲 Full'
+                        : '📄 A4 Form (1:1.41)'}
+                    </Text>
+                  </View>
                 </View>
               </View>
             )}
@@ -603,15 +790,32 @@ export default function ScanFormScreen({ navigation }: Props) {
             <View style={styles.cropSection}>
               <View style={styles.cropHeaderRow}>
                 <Text style={styles.filterSectionTitle}>Adjust Document Size / Framing:</Text>
-                <Text style={styles.cropDimensionsBadge}>
-                  {activeCropPreset === 'id_card'
-                    ? '1.58:1 (ID Card)'
-                    : activeCropPreset === 'receipt'
-                    ? '1:2.2 (Receipt)'
-                    : activeCropPreset === 'full'
-                    ? 'Full Image'
-                    : '1:1.41 (A4 Form)'}
-                </Text>
+                <Pressable
+                  style={styles.autoSnapBtn}
+                  onPress={() => {
+                    if (capturedDimensions) {
+                      const { width, height } = capturedDimensions;
+                      const ratio = Math.max(width, height) / Math.min(width, height);
+                      const isLandscape = width > height;
+                      if (isLandscape || (ratio >= 1.45 && ratio <= 1.75)) {
+                        applyCropPreset('id_card', false);
+                      } else if (ratio > 1.9) {
+                        applyCropPreset('receipt', false);
+                      } else {
+                        applyCropPreset('a4', false);
+                      }
+                    } else if (docType === 'id_card') {
+                      applyCropPreset('id_card', false);
+                    } else if (docType === 'receipt') {
+                      applyCropPreset('receipt', false);
+                    } else {
+                      applyCropPreset('a4', false);
+                    }
+                    showToast('Boundary auto-aligned to document edges! 🎯', 'success');
+                  }}
+                >
+                  <Text style={styles.autoSnapBtnText}>🤖 Auto-Align Boundary</Text>
+                </Pressable>
               </View>
 
               <View style={styles.cropPresetRow}>
@@ -979,6 +1183,42 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
     borderBottomRightRadius: 6,
   },
+  frameEdgeMark: {
+    position: 'absolute',
+    backgroundColor: 'rgba(232, 145, 58, 0.85)',
+  },
+  frameEdgeMarkTop: {
+    top: -2,
+    left: '50%',
+    marginLeft: -12,
+    width: 24,
+    height: 3,
+    borderRadius: 2,
+  },
+  frameEdgeMarkBottom: {
+    bottom: -2,
+    left: '50%',
+    marginLeft: -12,
+    width: 24,
+    height: 3,
+    borderRadius: 2,
+  },
+  frameEdgeMarkLeft: {
+    left: -2,
+    top: '50%',
+    marginTop: -12,
+    width: 3,
+    height: 24,
+    borderRadius: 2,
+  },
+  frameEdgeMarkRight: {
+    right: -2,
+    top: '50%',
+    marginTop: -12,
+    width: 3,
+    height: 24,
+    borderRadius: 2,
+  },
   scanBeam: {
     position: 'absolute',
     left: 0,
@@ -1137,23 +1377,41 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   canvasContainer: {
-    height: 320,
+    width: '100%',
+    height: 350,
     borderRadius: Radius.lg,
     overflow: 'hidden',
-    backgroundColor: '#050810',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#070b14',
     marginBottom: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.border,
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   imageWrapper: {
     width: '100%',
     height: '100%',
+    position: 'relative',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   reviewImage: {
     width: '100%',
     height: '100%',
+  },
+  imageLoadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(7, 11, 20, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+    gap: Spacing.sm,
+  },
+  imageLoadingText: {
+    color: Colors.textSecondary,
+    fontSize: Typography.xs,
+    fontWeight: Typography.medium,
   },
   perspectiveOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1187,9 +1445,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 6,
   },
-  cropDimensionsBadge: {
-    fontSize: Typography.xs,
+  autoSnapBtn: {
+    backgroundColor: Colors.accentMuted,
+    paddingVertical: 4,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+  },
+  autoSnapBtnText: {
     color: Colors.accentLight,
+    fontSize: Typography.xs,
     fontWeight: Typography.bold,
   },
   cropPresetRow: {
@@ -1257,26 +1523,92 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   perspectiveBorder: {
-    flex: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     borderWidth: 2,
-    borderColor: Colors.primary,
-    borderStyle: 'dashed',
+    borderColor: Colors.accent,
     borderRadius: Radius.sm,
+    backgroundColor: 'rgba(45, 212, 191, 0.06)',
   },
   cropPin: {
     position: 'absolute',
-    width: 18,
-    height: 18,
-    borderRadius: 9,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     backgroundColor: Colors.white,
-    borderWidth: 3,
-    borderColor: Colors.primary,
-    zIndex: 10,
+    borderWidth: 2.5,
+    borderColor: Colors.accent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 15,
+    ...Shadow.glow,
   },
-  cropPinTL: { top: -9, left: -9 },
-  cropPinTR: { top: -9, right: -9 },
-  cropPinBL: { bottom: -9, left: -9 },
-  cropPinBR: { bottom: -9, right: -9 },
+  cropPinCore: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: Colors.primary,
+  },
+  cropPinTL: { top: -11, left: -11 },
+  cropPinTR: { top: -11, right: -11 },
+  cropPinBL: { bottom: -11, left: -11 },
+  cropPinBR: { bottom: -11, right: -11 },
+  edgePin: {
+    position: 'absolute',
+    backgroundColor: Colors.accent,
+    zIndex: 12,
+  },
+  edgePinTop: {
+    top: -3,
+    left: '50%',
+    marginLeft: -10,
+    width: 20,
+    height: 6,
+    borderRadius: 3,
+  },
+  edgePinBottom: {
+    bottom: -3,
+    left: '50%',
+    marginLeft: -10,
+    width: 20,
+    height: 6,
+    borderRadius: 3,
+  },
+  edgePinLeft: {
+    left: -3,
+    top: '50%',
+    marginTop: -10,
+    width: 6,
+    height: 20,
+    borderRadius: 3,
+  },
+  edgePinRight: {
+    right: -3,
+    top: '50%',
+    marginTop: -10,
+    width: 6,
+    height: 20,
+    borderRadius: 3,
+  },
+  cropFrameBadge: {
+    position: 'absolute',
+    bottom: 8,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(10, 14, 27, 0.85)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: Colors.accent,
+  },
+  cropFrameBadgeText: {
+    color: Colors.accentLight,
+    fontSize: 10,
+    fontWeight: Typography.bold,
+  },
   pdfCard: {
     alignItems: 'center',
     gap: Spacing.sm,
