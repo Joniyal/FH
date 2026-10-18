@@ -5,6 +5,7 @@ import {
   Image,
   Linking,
   PermissionsAndroid,
+  PermissionStatus,
   Platform,
   Pressable,
   ScrollView,
@@ -118,16 +119,17 @@ export default function ScanFormScreen({ navigation }: Props) {
 
   /**
    * Request Android Camera Permission at runtime with a user-friendly rationale.
+   * Returns PermissionsAndroid.PermissionStatus ('granted' | 'denied' | 'never_ask_again').
    * Built with platform guard to allow easy extension for iOS in the future.
    */
-  const requestCameraPermission = useCallback(async (): Promise<boolean> => {
+  const requestCameraPermission = useCallback(async (): Promise<PermissionStatus> => {
     if (Platform.OS === 'android') {
       try {
         const alreadyGranted = await PermissionsAndroid.check(
           PermissionsAndroid.PERMISSIONS.CAMERA
         );
         if (alreadyGranted) {
-          return true;
+          return PermissionsAndroid.RESULTS.GRANTED;
         }
 
         const granted = await PermissionsAndroid.request(
@@ -139,20 +141,21 @@ export default function ScanFormScreen({ navigation }: Props) {
             buttonNegative: 'Deny',
           }
         );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+        return granted;
       } catch (err) {
         console.warn('Camera permission request error:', err);
-        return false;
+        return PermissionsAndroid.RESULTS.DENIED;
       }
     }
 
     // Fallback for future platforms (e.g. iOS)
-    return true;
+    return PermissionsAndroid.RESULTS.GRANTED;
   }, []);
 
   /**
    * STEP 2: NATIVE GOOGLE ML KIT DOCUMENT SCANNER TRIGGER
-   * Requests runtime camera permission first, then launches DocumentScanner.scanDocument().
+   * Requests runtime camera permission first, handles GRANTED / NEVER_ASK_AGAIN / DENIED,
+   * then launches DocumentScanner.scanDocument() on the happy path.
    */
   const startScanning = useCallback(async () => {
     try {
@@ -160,64 +163,76 @@ export default function ScanFormScreen({ navigation }: Props) {
       setShowSettingsButton(false);
 
       // Verify and request Android runtime camera permission
-      const hasPermission = await requestCameraPermission();
-      if (!hasPermission) {
-        const deniedMessage = 'Camera permission is required to scan documents into your vault.';
-        setScreenError(deniedMessage);
+      const granted = await requestCameraPermission();
+
+      // 1. GRANTED: Proceed with launching ML Kit scanner
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        setIsScanning(true);
+
+        if (!DocumentScanner || typeof DocumentScanner.scanDocument !== 'function') {
+          Alert.alert(
+            'Rebuild Required for ML Kit Native Scanner',
+            'The newly installed native ML Kit document scanner requires a native APK rebuild to link the Android binary. Would you like to use Camera or Gallery in the meantime?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: '📷 Camera', onPress: handleCaptureFromCamera },
+              { text: '🖼️ Gallery', onPress: () => handlePickFromGallery() },
+            ]
+          );
+          return;
+        }
+
+        // Trigger ML Kit Native Document Scanner
+        const result = await DocumentScanner.scanDocument({
+          scannerMode: 'full',
+          letUserAdjustCrop: true,
+          format: 'jpeg',
+          croppedImageQuality: 100,
+          responseType: 'imageFilePath',
+        });
+
+        if (result?.scannedImages && result.scannedImages.length > 0) {
+          const firstImageUri = result.scannedImages[0];
+          setSelectedImageUri(firstImageUri);
+          setFileName('Scanned_Document.jpg');
+
+          showToast('Document scanned with Google ML Kit! 📄', 'success');
+
+          // Pass first image URI directly to extractTextFromImage in ocrService
+          setIsProcessing(true);
+          const ocrData = await extractTextFromImage(firstImageUri);
+          setIsProcessing(false);
+          setLastOcrResult(ocrData);
+
+          // Seamlessly navigate to OCR & Auto-Fill screen
+          navigation.navigate('OCRResult', {
+            imageUri: firstImageUri,
+          });
+        }
+      } 
+      // 2. PERMANENTLY DENIED: Prompt user to open settings
+      else if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
+        const permanentDeniedMsg =
+          "Camera access has been permanently disabled. To scan documents into your vault, please tap 'Open Settings', navigate to Permissions, and allow Camera access.";
+        setScreenError(permanentDeniedMsg);
         setShowSettingsButton(true);
-        showToast(deniedMessage, 'error');
         Alert.alert(
-          'Camera Permission Denied',
-          'We cannot proceed with scanning without camera access. Please grant camera permission in app settings or try again.',
+          'Camera Permission Required',
+          "Camera access has been permanently disabled. To scan documents into your vault, please tap 'Open Settings', navigate to Permissions, and allow Camera access.",
           [
             { text: 'Cancel', style: 'cancel' },
             { text: 'Open Settings', onPress: () => Linking.openSettings() },
           ]
         );
         return;
-      }
-
-      setIsScanning(true);
-
-      if (!DocumentScanner || typeof DocumentScanner.scanDocument !== 'function') {
-        Alert.alert(
-          'Rebuild Required for ML Kit Native Scanner',
-          'The newly installed native ML Kit document scanner requires a native APK rebuild to link the Android binary. Would you like to use Camera or Gallery in the meantime?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: '📷 Camera', onPress: handleCaptureFromCamera },
-            { text: '🖼️ Gallery', onPress: () => handlePickFromGallery() },
-          ]
-        );
+      } 
+      // 3. DENIED: Gracefully show alert/toast to try again later
+      else if (granted === PermissionsAndroid.RESULTS.DENIED) {
+        const deniedMsg = 'We cannot launch the scanner without camera access. You can try again later.';
+        setScreenError(deniedMsg);
+        showToast(deniedMsg, 'error');
+        Alert.alert('Permission Denied', deniedMsg);
         return;
-      }
-
-      // Trigger ML Kit Native Document Scanner
-      const result = await DocumentScanner.scanDocument({
-        scannerMode: 'full',
-        letUserAdjustCrop: true,
-        format: 'jpeg',
-        croppedImageQuality: 100,
-        responseType: 'imageFilePath',
-      });
-
-      if (result?.scannedImages && result.scannedImages.length > 0) {
-        const firstImageUri = result.scannedImages[0];
-        setSelectedImageUri(firstImageUri);
-        setFileName('Scanned_Document.jpg');
-
-        showToast('Document scanned with Google ML Kit! 📄', 'success');
-
-        // Pass first image URI directly to extractTextFromImage in ocrService
-        setIsProcessing(true);
-        const ocrData = await extractTextFromImage(firstImageUri);
-        setIsProcessing(false);
-        setLastOcrResult(ocrData);
-
-        // Seamlessly navigate to OCR & Auto-Fill screen
-        navigation.navigate('OCRResult', {
-          imageUri: firstImageUri,
-        });
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to launch Google ML Kit scanner';
