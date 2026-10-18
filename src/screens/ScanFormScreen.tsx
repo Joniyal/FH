@@ -1,7 +1,8 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
   Linking,
   PermissionsAndroid,
@@ -78,6 +79,9 @@ export default function ScanFormScreen({ navigation }: Props) {
   const [screenError, setScreenError] = useState<string>('');
   const [showSettingsButton, setShowSettingsButton] = useState<boolean>(false);
   const [lastOcrResult, setLastOcrResult] = useState<OCRResultData | null>(null);
+
+  // Track if user was sent to device settings to auto-resume on return
+  const waitingForSettingsReturn = useRef(false);
 
   /**
    * Direct camera capture fallback
@@ -221,7 +225,13 @@ export default function ScanFormScreen({ navigation }: Props) {
           "Camera access has been permanently disabled. To scan documents into your vault, please tap 'Open Settings', navigate to Permissions, and allow Camera access.",
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+            {
+              text: 'Open Settings',
+              onPress: () => {
+                waitingForSettingsReturn.current = true;
+                Linking.openSettings();
+              },
+            },
           ]
         );
         return;
@@ -249,6 +259,37 @@ export default function ScanFormScreen({ navigation }: Props) {
 
   // Alias for backward compatibility
   const handleScanDocument = startScanning;
+
+  /**
+   * STEP 3: APPSTATE LISTENER
+   * Automatically detect when the app returns to the foreground from OS Settings.
+   * Silently re-check camera permission and launch the scanner if granted.
+   */
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active' && waitingForSettingsReturn.current) {
+        waitingForSettingsReturn.current = false;
+
+        try {
+          const hasPermission = await PermissionsAndroid.check(
+            PermissionsAndroid.PERMISSIONS.CAMERA
+          );
+
+          if (hasPermission) {
+            setScreenError('');
+            setShowSettingsButton(false);
+            startScanning();
+          }
+        } catch (err) {
+          console.warn('Error checking camera permission on resume:', err);
+        }
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [startScanning]);
 
   /**
    * Pick document or form image from device gallery
@@ -360,7 +401,10 @@ export default function ScanFormScreen({ navigation }: Props) {
           {showSettingsButton && (
             <Pressable
               style={styles.settingsButton}
-              onPress={() => Linking.openSettings()}
+              onPress={() => {
+                waitingForSettingsReturn.current = true;
+                Linking.openSettings();
+              }}
             >
               <Text style={styles.settingsButtonText}>{t('scan.openSettings')}</Text>
             </Pressable>
