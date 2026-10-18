@@ -4,6 +4,8 @@ import {
   Alert,
   Image,
   Linking,
+  PermissionsAndroid,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -115,12 +117,66 @@ export default function ScanFormScreen({ navigation }: Props) {
   }, [navigation]);
 
   /**
-   * STEP 2: NATIVE GOOGLE ML KIT DOCUMENT SCANNER TRIGGER
-   * Launches Google's native ML Kit Document Scanner activity.
+   * Request Android Camera Permission at runtime with a user-friendly rationale.
+   * Built with platform guard to allow easy extension for iOS in the future.
    */
-  const handleScanDocument = useCallback(async () => {
+  const requestCameraPermission = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS === 'android') {
+      try {
+        const alreadyGranted = await PermissionsAndroid.check(
+          PermissionsAndroid.PERMISSIONS.CAMERA
+        );
+        if (alreadyGranted) {
+          return true;
+        }
+
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.CAMERA,
+          {
+            title: 'Camera Permission Required',
+            message: 'We need camera access to scan your documents into your vault.',
+            buttonPositive: 'Allow',
+            buttonNegative: 'Deny',
+          }
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn('Camera permission request error:', err);
+        return false;
+      }
+    }
+
+    // Fallback for future platforms (e.g. iOS)
+    return true;
+  }, []);
+
+  /**
+   * STEP 2: NATIVE GOOGLE ML KIT DOCUMENT SCANNER TRIGGER
+   * Requests runtime camera permission first, then launches DocumentScanner.scanDocument().
+   */
+  const startScanning = useCallback(async () => {
     try {
       setScreenError('');
+      setShowSettingsButton(false);
+
+      // Verify and request Android runtime camera permission
+      const hasPermission = await requestCameraPermission();
+      if (!hasPermission) {
+        const deniedMessage = 'Camera permission is required to scan documents into your vault.';
+        setScreenError(deniedMessage);
+        setShowSettingsButton(true);
+        showToast(deniedMessage, 'error');
+        Alert.alert(
+          'Camera Permission Denied',
+          'We cannot proceed with scanning without camera access. Please grant camera permission in app settings or try again.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          ]
+        );
+        return;
+      }
+
       setIsScanning(true);
 
       if (!DocumentScanner || typeof DocumentScanner.scanDocument !== 'function') {
@@ -174,7 +230,10 @@ export default function ScanFormScreen({ navigation }: Props) {
       setIsScanning(false);
       setIsProcessing(false);
     }
-  }, [handleCaptureFromCamera, navigation, showToast]);
+  }, [handleCaptureFromCamera, navigation, requestCameraPermission, showToast]);
+
+  // Alias for backward compatibility
+  const handleScanDocument = startScanning;
 
   /**
    * Pick document or form image from device gallery
@@ -377,7 +436,7 @@ export default function ScanFormScreen({ navigation }: Props) {
 
               <Pressable
                 style={styles.secondaryActionBtn}
-                onPress={handleScanDocument}
+                onPress={startScanning}
                 disabled={isScanning || isProcessing}
               >
                 <Text style={styles.secondaryActionBtnText}>↺ Scan Again (ML Kit)</Text>
@@ -417,7 +476,7 @@ export default function ScanFormScreen({ navigation }: Props) {
           {/* Launch Scanner Trigger */}
           <Pressable
             style={[styles.scanLaunchBtn, isScanning && styles.btnDisabled]}
-            onPress={handleScanDocument}
+            onPress={startScanning}
             disabled={isScanning}
           >
             {isScanning ? (
