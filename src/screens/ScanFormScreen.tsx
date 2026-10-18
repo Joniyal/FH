@@ -18,6 +18,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSpring,
   withTiming,
 } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
@@ -56,6 +57,21 @@ export default function ScanFormScreen() {
   // Animated style binding for HUD status text
   const animatedTextStyle = useAnimatedStyle(() => ({
     opacity: pulseOpacity.value,
+  }));
+
+  // Shutter button spring physics (120Hz native touch tracking & momentum)
+  const shutterScale = useSharedValue(1);
+
+  const handleShutterPressIn = () => {
+    shutterScale.value = withSpring(0.86, { damping: 15, stiffness: 350 });
+  };
+
+  const handleShutterPressOut = () => {
+    shutterScale.value = withSpring(1.0, { damping: 12, stiffness: 220 });
+  };
+
+  const animatedShutterStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: shutterScale.value }],
   }));
 
   // Handle Pick Document / Image from device gallery
@@ -206,13 +222,15 @@ export default function ScanFormScreen() {
             <Feather name="image" size={28} color="#AAAAAA" />
           </TouchableOpacity>
 
-          {/* Center: Cyber Shutter Button */}
+          {/* Center: Cyber Shutter Button with tactile spring physics */}
           <TouchableOpacity
             style={styles.shutterOuterRing}
+            onPressIn={handleShutterPressIn}
+            onPressOut={handleShutterPressOut}
             onPress={() => {}}
-            activeOpacity={0.85}
+            activeOpacity={1}
           >
-            <View style={styles.shutterInnerCircle} />
+            <Animated.View style={[styles.shutterInnerCircle, animatedShutterStyle]} />
           </TouchableOpacity>
 
           {/* Right: Close Screen */}

@@ -55,8 +55,10 @@ function AppNavigator() {
           contentStyle: {
             backgroundColor: Colors.bg,
           },
-          // Smooth slide animation
-          animation: 'slide_from_right',
+          // 120Hz native gesture tracking and Android predictive back
+          gestureEnabled: true,
+          fullScreenGestureEnabled: true,
+          animation: 'default',
         }}
       >
         <Stack.Screen
