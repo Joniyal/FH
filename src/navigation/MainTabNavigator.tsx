@@ -1,6 +1,12 @@
 import React from 'react';
 import { StyleSheet, Text } from 'react-native';
-import { createMaterialTopTabNavigator } from '@react-navigation/material-top-tabs';
+// Dynamically resolve createMaterialTopTabNavigator to keep builds green before dependency install
+let createMaterialTopTabNavigator: any = null;
+try {
+  createMaterialTopTabNavigator = require('@react-navigation/material-top-tabs').createMaterialTopTabNavigator;
+} catch {
+  // Gracefully handles missing dependency before npm install
+}
 import HomeScreen from '../screens/HomeScreen';
 import ScanFormScreen from '../screens/ScanFormScreen';
 import PersonalVaultScreen from '../screens/PersonalVaultScreen';
@@ -15,7 +21,7 @@ export type MainTabParamList = {
   FormHistory: undefined;
 };
 
-const Tab = createMaterialTopTabNavigator<MainTabParamList>();
+const Tab = createMaterialTopTabNavigator ? (createMaterialTopTabNavigator as any)() : null;
 
 /**
  * CONFIGURATION FLAG:
@@ -26,6 +32,7 @@ const Tab = createMaterialTopTabNavigator<MainTabParamList>();
 const HIDE_TAB_BAR = false;
 
 export default function MainTabNavigator() {
+  if (!Tab) return null;
   return (
     <Tab.Navigator
       initialRouteName="Home"

@@ -1,314 +1,66 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  AppState,
-  Image,
-  Linking,
-  PermissionsAndroid,
-  PermissionStatus,
   Platform,
-  Pressable,
-  ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
-  useWindowDimensions,
+  TouchableOpacity,
   View,
 } from 'react-native';
-
-// Safely resolve native DocumentScanner module in runtime / test environments
-let DocumentScanner: any = null;
-try {
-  const mod =
-    require('react-native-document-scanner-plugin').default ||
-    require('react-native-document-scanner-plugin');
-  DocumentScanner = mod;
-} catch {
-  try {
-    const mod =
-      require('react-native-mlkit-document-scanner').default ||
-      require('react-native-mlkit-document-scanner');
-    DocumentScanner = mod;
-  } catch {
-    // Handled gracefully in test / dev environments
-  }
-}
-
+import {
+  Camera,
+  useCameraDevice,
+  useCameraPermission,
+} from 'react-native-vision-camera';
+import { BlurView } from '@react-native-community/blur';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../types/navigation';
-import { useLanguage } from '../i18n/LanguageContext';
-import Colors from '../theme/colors';
-import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
-import { useToast } from '../components/Toast';
-import { extractTextFromImage, OCRResultData } from '../services/ocrService';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'ScanForm'>;
+export default function ScanFormScreen() {
+  const navigation = useNavigation<any>();
 
-/**
- * REFACTORED SCAN FORM SCREEN:
- * 
- * 1. REMOVED OLD CUSTOM IMPLEMENTATION:
- *    - Deleted custom 8-point magnetic crop handles (4 corners + 4 edge pills).
- *    - Deleted custom aspect ratio presets (Fit A4, ID Card, Receipt, No Crop).
- *    - Deleted manual software image sharpening filters (Magic Color, Ultra Crisp Text, Clean B&W).
- *    - Deleted custom camera overlay viewfinders and manual gesture drag responders.
- * 
- * 2. INTEGRATED GOOGLE ML KIT DOCUMENT SCANNER:
- *    - Calls `DocumentScanner.scanDocument()` with:
- *        `scannerMode: 'full'` (handles perspective correction, shadow removal, and contrast filters natively)
- *        `letUserAdjustCrop: true` (lets users adjust edges using Google's native ML Kit crop UI)
- *        `format: 'jpeg'`
- *    - When scanned images are returned, passes the first image URI directly to
- *      `extractTextFromImage(firstImageUri)` in `ocrService.ts`.
- *    - Seamlessly navigates to OCRResultScreen with extracted data.
- */
-export default function ScanFormScreen({ navigation }: Props) {
-  const { t, language } = useLanguage();
-  const { width: windowWidth } = useWindowDimensions();
-  const { showToast } = useToast();
+  // 1. Vision Camera hooks for device and runtime permissions
+  const { hasPermission, requestPermission } = useCameraPermission();
+  const device = useCameraDevice('back');
 
-  const previewWidth = Math.min(windowWidth - Spacing.base * 2, 420);
-  const previewHeight = Math.round(previewWidth * 1.35);
+  // Flash / Torch state toggle
+  const [torchOn, setTorchOn] = useState<boolean>(false);
 
-  const [selectedImageUri, setSelectedImageUri] = useState<string>('');
-  const [fileName, setFileName] = useState<string>('');
-  const [isScanning, setIsScanning] = useState<boolean>(false);
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [screenError, setScreenError] = useState<string>('');
-  const [showSettingsButton, setShowSettingsButton] = useState<boolean>(false);
-  const [lastOcrResult, setLastOcrResult] = useState<OCRResultData | null>(null);
+  // 2. Reanimated shared value for smooth HUD text pulsing
+  const pulseOpacity = useSharedValue(0.3);
 
-  // Track if user was sent to device settings to auto-resume on return
-  const waitingForSettingsReturn = useRef(false);
-
-  /**
-   * Direct camera capture fallback
-   */
-  const handleCaptureFromCamera = useCallback(async () => {
-    try {
-      setScreenError('');
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        setScreenError('Camera permission is required.');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        quality: 1,
-        allowsEditing: false,
-      });
-
-      if (!result.canceled && result.assets[0]?.uri) {
-        const asset = result.assets[0];
-        setSelectedImageUri(asset.uri);
-        setFileName('Camera_Scan.jpg');
-
-        setIsProcessing(true);
-        const ocrData = await extractTextFromImage(asset.uri);
-        setIsProcessing(false);
-        setLastOcrResult(ocrData);
-
-        navigation.navigate('OCRResult', {
-          imageUri: asset.uri,
-        });
-      }
-    } catch (e) {
-      setScreenError(e instanceof Error ? e.message : 'Error capturing from camera');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [navigation]);
-
-  /**
-   * Request Android Camera Permission at runtime with a user-friendly rationale.
-   * Returns PermissionsAndroid.PermissionStatus ('granted' | 'denied' | 'never_ask_again').
-   * Built with platform guard to allow easy extension for iOS in the future.
-   */
-  const requestCameraPermission = useCallback(async (): Promise<PermissionStatus> => {
-    if (Platform.OS === 'android') {
-      try {
-        const alreadyGranted = await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.CAMERA
-        );
-        if (alreadyGranted) {
-          return PermissionsAndroid.RESULTS.GRANTED;
-        }
-
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.CAMERA,
-          {
-            title: 'Camera Permission Required',
-            message: 'We need camera access to scan your documents into your vault.',
-            buttonPositive: 'Allow',
-            buttonNegative: 'Deny',
-          }
-        );
-        return granted;
-      } catch (err) {
-        console.warn('Camera permission request error:', err);
-        return PermissionsAndroid.RESULTS.DENIED;
-      }
-    }
-
-    // Fallback for future platforms (e.g. iOS)
-    return PermissionsAndroid.RESULTS.GRANTED;
-  }, []);
-
-  /**
-   * STEP 2: NATIVE GOOGLE ML KIT DOCUMENT SCANNER TRIGGER
-   * Requests runtime camera permission first, handles GRANTED / NEVER_ASK_AGAIN / DENIED,
-   * then launches DocumentScanner.scanDocument() on the happy path.
-   */
-  const startScanning = useCallback(async () => {
-    try {
-      setScreenError('');
-      setShowSettingsButton(false);
-
-      // Verify and request Android runtime camera permission
-      const granted = await requestCameraPermission();
-
-      // 1. GRANTED: Proceed with launching ML Kit scanner
-      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        setIsScanning(true);
-
-        if (!DocumentScanner || typeof DocumentScanner.scanDocument !== 'function') {
-          Alert.alert(
-            'Rebuild Required for ML Kit Native Scanner',
-            'The newly installed native ML Kit document scanner requires a native APK rebuild to link the Android binary. Would you like to use Camera or Gallery in the meantime?',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: '📷 Camera', onPress: handleCaptureFromCamera },
-              { text: '🖼️ Gallery', onPress: () => handlePickFromGallery() },
-            ]
-          );
-          return;
-        }
-
-        // Trigger ML Kit Native Document Scanner
-        const result = await DocumentScanner.scanDocument({
-          scannerMode: 'full',
-          letUserAdjustCrop: true,
-          format: 'jpeg',
-          croppedImageQuality: 100,
-          responseType: 'imageFilePath',
-        });
-
-        if (result?.scannedImages && result.scannedImages.length > 0) {
-          const firstImageUri = result.scannedImages[0];
-          setSelectedImageUri(firstImageUri);
-          setFileName('Scanned_Document.jpg');
-
-          showToast('Document scanned with Google ML Kit! 📄', 'success');
-
-          // Pass first image URI directly to extractTextFromImage in ocrService
-          setIsProcessing(true);
-          const ocrData = await extractTextFromImage(firstImageUri);
-          setIsProcessing(false);
-          setLastOcrResult(ocrData);
-
-          // Seamlessly navigate to OCR & Auto-Fill screen
-          navigation.navigate('OCRResult', {
-            imageUri: firstImageUri,
-          });
-        }
-      } 
-      // 2. PERMANENTLY DENIED: Prompt user to open settings
-      else if (granted === PermissionsAndroid.RESULTS.NEVER_ASK_AGAIN) {
-        const permanentDeniedMsg =
-          "Camera access has been permanently disabled. To scan documents into your vault, please tap 'Open Settings', navigate to Permissions, and allow Camera access.";
-        setScreenError(permanentDeniedMsg);
-        setShowSettingsButton(true);
-        Alert.alert(
-          'Camera Permission Required',
-          "Camera access has been permanently disabled. To scan documents into your vault, please tap 'Open Settings', navigate to Permissions, and allow Camera access.",
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Open Settings',
-              onPress: () => {
-                waitingForSettingsReturn.current = true;
-                Linking.openSettings();
-              },
-            },
-          ]
-        );
-        return;
-      } 
-      // 3. DENIED: Gracefully show alert/toast to try again later
-      else if (granted === PermissionsAndroid.RESULTS.DENIED) {
-        const deniedMsg = 'We cannot launch the scanner without camera access. You can try again later.';
-        setScreenError(deniedMsg);
-        showToast(deniedMsg, 'error');
-        Alert.alert('Permission Denied', deniedMsg);
-        return;
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Failed to launch Google ML Kit scanner';
-      // Do not display an aggressive error if user simply tapped back/cancelled
-      if (!errorMsg.toLowerCase().includes('cancel') && !errorMsg.toLowerCase().includes('user canceled')) {
-        setScreenError(errorMsg);
-        showToast(errorMsg, 'error');
-      }
-    } finally {
-      setIsScanning(false);
-      setIsProcessing(false);
-    }
-  }, [handleCaptureFromCamera, navigation, requestCameraPermission, showToast]);
-
-  // Alias for backward compatibility
-  const handleScanDocument = startScanning;
-
-  /**
-   * STEP 3: APPSTATE LISTENER
-   * Automatically detect when the app returns to the foreground from OS Settings.
-   * Silently re-check camera permission and launch the scanner if granted.
-   */
+  // Request camera permissions on mount if not yet granted
   useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState) => {
-      if (nextAppState === 'active' && waitingForSettingsReturn.current) {
-        waitingForSettingsReturn.current = false;
+    if (!hasPermission) {
+      requestPermission();
+    }
+  }, [hasPermission, requestPermission]);
 
-        try {
-          const hasPermission = await PermissionsAndroid.check(
-            PermissionsAndroid.PERMISSIONS.CAMERA
-          );
+  // Start continuous infinite pulse animation (0.3 <-> 1.0)
+  useEffect(() => {
+    pulseOpacity.value = withRepeat(
+      withTiming(1.0, { duration: 1000 }),
+      -1,
+      true
+    );
+  }, [pulseOpacity]);
 
-          if (hasPermission) {
-            setScreenError('');
-            setShowSettingsButton(false);
-            startScanning();
-          }
-        } catch (err) {
-          console.warn('Error checking camera permission on resume:', err);
-        }
-      }
-    });
+  // Animated style binding for HUD status text
+  const animatedTextStyle = useAnimatedStyle(() => ({
+    opacity: pulseOpacity.value,
+  }));
 
-    return () => {
-      subscription.remove();
-    };
-  }, [startScanning]);
-
-  /**
-   * Pick document or form image from device gallery
-   */
-  const handlePickFromGallery = useCallback(async () => {
+  // Handle Pick Document / Image from device gallery
+  const handleOpenGallery = async () => {
     try {
-      setScreenError('');
-      setShowSettingsButton(false);
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        if (!permission.canAskAgain) {
-          setScreenError(t('scan.errorGallerySettings'));
-          setShowSettingsButton(true);
-        } else {
-          setScreenError(t('scan.errorGalleryDenied'));
-        }
-        return;
-      }
-
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         quality: 1,
@@ -316,610 +68,375 @@ export default function ScanFormScreen({ navigation }: Props) {
       });
 
       if (!result.canceled && result.assets[0]?.uri) {
-        const asset = result.assets[0];
-        setSelectedImageUri(asset.uri);
-        setFileName(asset.fileName || 'Gallery_Image.jpg');
-
-        setIsProcessing(true);
-        const ocrData = await extractTextFromImage(asset.uri);
-        setIsProcessing(false);
-        setLastOcrResult(ocrData);
-
         navigation.navigate('OCRResult', {
-          imageUri: asset.uri,
+          imageUri: result.assets[0].uri,
         });
       }
-    } catch (e) {
-      setScreenError(e instanceof Error ? e.message : t('scan.errorGallery'));
-    } finally {
-      setIsProcessing(false);
+    } catch (err) {
+      console.warn('Gallery picker error:', err);
     }
-  }, [navigation, showToast, t]);
+  };
 
-  /**
-   * Upload existing PDF form document
-   */
-  const handlePickDocument = useCallback(async () => {
-    try {
-      setScreenError('');
-      const doc = await DocumentPicker.getDocumentAsync({
-        type: ['application/pdf', 'image/*'],
-        copyToCacheDirectory: true,
-      });
+  // 1. Fallback screen if camera permission is denied
+  if (!hasPermission) {
+    return (
+      <View style={styles.fallbackContainer}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <View style={styles.fallbackCard}>
+          <Feather name="camera-off" size={48} color="#00E5FF" style={styles.fallbackIcon} />
+          <Text style={styles.fallbackTitle}>CAMERA ACCESS REQUIRED</Text>
+          <Text style={styles.fallbackSubtitle}>
+            To engage the AI targeting scanner and digitize your documents, please grant camera permissions.
+          </Text>
+          <TouchableOpacity
+            style={styles.permissionButton}
+            onPress={requestPermission}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.permissionButtonText}>ENABLE SENSORS</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.fallbackCloseButton}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.fallbackCloseText}>RETURN TO DASHBOARD</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
 
-      if (!doc.canceled && doc.assets && doc.assets[0]) {
-        const file = doc.assets[0];
-        setSelectedImageUri(file.uri);
-        setFileName(file.name);
-
-        setIsProcessing(true);
-        const ocrData = await extractTextFromImage(file.uri, { filename: file.name });
-        setIsProcessing(false);
-        setLastOcrResult(ocrData);
-
-        navigation.navigate('OCRResult', {
-          imageUri: file.uri,
-        });
-      }
-    } catch (e) {
-      setScreenError(e instanceof Error ? e.message : 'Failed to pick document');
-    } finally {
-      setIsProcessing(false);
-    }
-  }, [navigation]);
-
-  const handleProceedToOCR = useCallback(() => {
-    if (!selectedImageUri) return;
-    navigation.navigate('OCRResult', {
-      imageUri: selectedImageUri,
-    });
-  }, [navigation, selectedImageUri]);
+  // 2. Fallback loader if camera device is initializing
+  if (device == null) {
+    return (
+      <View style={styles.fallbackContainer}>
+        <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+        <ActivityIndicator size="large" color="#00E5FF" />
+        <Text style={styles.loadingText}>INITIALIZING OPTICAL SENSORS...</Text>
+      </View>
+    );
+  }
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
+    <View style={styles.root}>
+      {/* 2. ROOT CONTAINER & STATUS BAR */}
+      <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
+
+      {/* 3. LAYER 0: THE CAMERA */}
+      <Camera
+        style={StyleSheet.absoluteFillObject}
+        device={device}
+        isActive={true}
+        torchMode={torchOn ? 'on' : 'off'}
+        enableNativeZoomGesture={true}
+      />
+
+      {/* 4. LAYER 1: TOP ACTION BAR (FROSTED PILL) */}
+      <View style={styles.topBarWrapper}>
+        <BlurView
+          blurType="dark"
+          blurAmount={60}
+          overlayColor="rgba(10, 15, 29, 0.65)"
+          style={styles.topBarBlur}
         >
-          <Text style={styles.backIcon}>←</Text>
-        </Pressable>
-        <Text style={styles.title}>{t('scan.title')}</Text>
-        <View style={styles.mlkitPill}>
-          <Text style={styles.mlkitPillText}>ML Kit</Text>
-        </View>
-      </View>
-
-      {/* Screen Error Display */}
-      {screenError ? (
-        <View style={styles.errorBox}>
-          <Text style={styles.errorIcon}>⚠️</Text>
-          <Text style={styles.errorText}>{screenError}</Text>
-          {showSettingsButton && (
-            <Pressable
-              style={styles.settingsButton}
-              onPress={() => {
-                waitingForSettingsReturn.current = true;
-                Linking.openSettings();
-              }}
-            >
-              <Text style={styles.settingsButtonText}>{t('scan.openSettings')}</Text>
-            </Pressable>
-          )}
-        </View>
-      ) : null}
-
-      {/* Main Scanner Section */}
-      {selectedImageUri ? (
-        /* Scanned Document Preview & Review */
-        <View style={styles.previewContainer}>
-          <View style={styles.previewCard}>
-            <View style={styles.previewHeader}>
-              <View style={styles.previewStatusTag}>
-                <Text style={styles.previewStatusIcon}>⚡</Text>
-                <Text style={styles.previewStatusText}>Google ML Kit Scanned</Text>
-              </View>
-              <Text style={styles.previewFileName} numberOfLines={1}>
-                {fileName}
-              </Text>
-            </View>
-
-            <View style={[styles.imageWrapper, { width: previewWidth, height: previewHeight }]}>
-              {fileName.toLowerCase().endsWith('.pdf') ? (
-                <View style={styles.pdfPlaceholder}>
-                  <Text style={{ fontSize: 56 }}>📄</Text>
-                  <Text style={styles.pdfFileName}>{fileName}</Text>
-                  <Text style={styles.pdfSubtext}>PDF Document Loaded</Text>
-                </View>
-              ) : (
-                <Image
-                  source={{ uri: selectedImageUri }}
-                  style={styles.previewImage}
-                  resizeMode="contain"
-                />
-              )}
-
-              {isProcessing && (
-                <View style={styles.processingOverlay}>
-                  <ActivityIndicator size="large" color={Colors.primary} />
-                  <Text style={styles.processingText}>Processing with ML Kit Text Recognition...</Text>
-                </View>
-              )}
-            </View>
-
-            {/* Extracted Data Summary (If Available) */}
-            {lastOcrResult?.parsedData && (
-              <View style={styles.parsedDataSummary}>
-                <Text style={styles.parsedDataTitle}>Detected Fields from Document:</Text>
-                <View style={styles.parsedDataChips}>
-                  {lastOcrResult.parsedData.name && (
-                    <View style={styles.chip}>
-                      <Text style={styles.chipText}>🪪 {lastOcrResult.parsedData.name}</Text>
-                    </View>
-                  )}
-                  {lastOcrResult.parsedData.dob && (
-                    <View style={styles.chip}>
-                      <Text style={styles.chipText}>🎂 {lastOcrResult.parsedData.dob}</Text>
-                    </View>
-                  )}
-                  {lastOcrResult.parsedData.phone && (
-                    <View style={styles.chip}>
-                      <Text style={styles.chipText}>📱 {lastOcrResult.parsedData.phone}</Text>
-                    </View>
-                  )}
-                  {lastOcrResult.parsedData.address && (
-                    <View style={styles.chip}>
-                      <Text style={styles.chipText} numberOfLines={1}>
-                        🏠 {lastOcrResult.parsedData.address}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-            )}
-
-            {/* Primary Action Buttons */}
-            <View style={styles.actionButtonsRow}>
-              <Pressable
-                style={[styles.primaryActionBtn, isProcessing && styles.btnDisabled]}
-                onPress={handleProceedToOCR}
-                disabled={isProcessing}
-              >
-                <Text style={styles.primaryActionBtnText}>
-                  ⚡ Continue to OCR & Auto-Fill ➔
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.secondaryActionBtn}
-                onPress={startScanning}
-                disabled={isScanning || isProcessing}
-              >
-                <Text style={styles.secondaryActionBtnText}>↺ Scan Again (ML Kit)</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      ) : (
-        /* Launch Document Scanner Hero Card */
-        <View style={styles.heroCard}>
-          <View style={styles.heroIconBadge}>
-            <Text style={styles.heroBadgeEmoji}>📑</Text>
-          </View>
-
-          <Text style={styles.heroTitle}>Native Document Scanner</Text>
-          <Text style={styles.heroSubtitle}>
-            Powered by Google ML Kit with on-device edge detection, auto-crop perspective correction,
-            and high-precision text recognition.
-          </Text>
-
-          {/* Feature Highlights */}
-          <View style={styles.featuresList}>
-            <View style={styles.featureItem}>
-              <Text style={styles.featureDot}>✓</Text>
-              <Text style={styles.featureText}>Automatic document edge detection & perspective alignment</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <Text style={styles.featureDot}>✓</Text>
-              <Text style={styles.featureText}>Native lighting & shadow removal with full color filters</Text>
-            </View>
-            <View style={styles.featureItem}>
-              <Text style={styles.featureDot}>✓</Text>
-              <Text style={styles.featureText}>100% On-device offline text recognition & bounding boxes</Text>
-            </View>
-          </View>
-
-          {/* Launch Scanner Trigger */}
-          <Pressable
-            style={[styles.scanLaunchBtn, isScanning && styles.btnDisabled]}
-            onPress={startScanning}
-            disabled={isScanning}
+          {/* Left: Flash / Torch Toggle */}
+          <TouchableOpacity
+            onPress={() => setTorchOn((prev) => !prev)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            {isScanning ? (
-              <ActivityIndicator color={Colors.white} />
-            ) : (
-              <>
-                <Text style={styles.scanLaunchBtnIcon}>📷</Text>
-                <Text style={styles.scanLaunchBtnText}>Scan Document (ML Kit)</Text>
-              </>
-            )}
-          </Pressable>
-        </View>
-      )}
+            <Feather
+              name="zap"
+              size={22}
+              color={torchOn ? '#00E5FF' : '#FFFFFF'}
+            />
+          </TouchableOpacity>
 
-      {/* Alternative Input Sources */}
-      <View style={styles.alternativeCard}>
-        <Text style={styles.alternativeTitle}>Other Document Sources</Text>
-        <View style={styles.alternativeButtons}>
-          <Pressable style={styles.altBtn} onPress={handlePickFromGallery}>
-            <Text style={styles.altBtnIcon}>🖼️</Text>
-            <Text style={styles.altBtnText}>{t('scan.fromGallery')}</Text>
-          </Pressable>
+          {/* Center: AI Scanner Brand */}
+          <Text style={styles.topBarTitle}>AI SCANNER</Text>
 
-          <Pressable style={styles.altBtn} onPress={handlePickDocument}>
-            <Text style={styles.altBtnIcon}>📁</Text>
-            <Text style={styles.altBtnText}>Upload PDF / Form</Text>
-          </Pressable>
-        </View>
+          {/* Right: Sliders / Settings Icon */}
+          <TouchableOpacity
+            onPress={() => {}}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="sliders" size={22} color="#FFFFFF" />
+          </TouchableOpacity>
+        </BlurView>
       </View>
-    </ScrollView>
+
+      {/* 5. LAYER 2: THE CYBER CYAN TARGETING HUD */}
+      <View style={styles.hudOverlay} pointerEvents="none">
+        <View style={styles.targetingContainer}>
+          {/* Top-Left Corner Bracket */}
+          <View style={[styles.cornerBracket, styles.bracketTopLeft]} />
+
+          {/* Top-Right Corner Bracket */}
+          <View style={[styles.cornerBracket, styles.bracketTopRight]} />
+
+          {/* Bottom-Left Corner Bracket */}
+          <View style={[styles.cornerBracket, styles.bracketBottomLeft]} />
+
+          {/* Bottom-Right Corner Bracket */}
+          <View style={[styles.cornerBracket, styles.bracketBottomRight]} />
+        </View>
+
+        {/* Pulsing Status Text */}
+        <Animated.Text style={[styles.hudStatusText, animatedTextStyle]}>
+          DETECTING DOCUMENT...
+        </Animated.Text>
+      </View>
+
+      {/* 6. LAYER 3: BOTTOM CONTROL BAR (FROSTED PILL) */}
+      <View style={styles.bottomBarWrapper}>
+        <BlurView
+          blurType="dark"
+          blurAmount={60}
+          overlayColor="rgba(10, 15, 29, 0.65)"
+          style={styles.bottomBarBlur}
+        >
+          {/* Left: Gallery Icon */}
+          <TouchableOpacity
+            onPress={handleOpenGallery}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="image" size={28} color="#AAAAAA" />
+          </TouchableOpacity>
+
+          {/* Center: Cyber Shutter Button */}
+          <TouchableOpacity
+            style={styles.shutterOuterRing}
+            onPress={() => {}}
+            activeOpacity={0.85}
+          >
+            <View style={styles.shutterInnerCircle} />
+          </TouchableOpacity>
+
+          {/* Right: Close Screen */}
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.7}
+            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          >
+            <Feather name="x" size={28} color="#AAAAAA" />
+          </TouchableOpacity>
+        </BlurView>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
+  root: {
     flex: 1,
-    backgroundColor: '#070C18',
+    backgroundColor: '#000000',
   },
-  container: {
-    padding: Spacing.base,
-    paddingBottom: Spacing.xl * 2,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    paddingTop: Spacing.sm,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.bgElevated,
-    justifyContent: 'center',
-    alignItems: 'center',
+
+  /* LAYER 1: Top Action Bar */
+  topBarWrapper: {
+    position: 'absolute',
+    top: 50,
+    alignSelf: 'center',
+    width: '90%',
+    zIndex: 10,
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: Colors.border,
-    marginRight: Spacing.md,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(10, 15, 29, 0.75)',
   },
-  backIcon: {
-    color: Colors.textPrimary,
-    fontSize: 20,
-    fontWeight: Typography.bold,
-  },
-  title: {
-    flex: 1,
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
-    color: Colors.textPrimary,
-  },
-  mlkitPill: {
-    backgroundColor: 'rgba(0, 229, 255, 0.12)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.4)',
-  },
-  mlkitPillText: {
-    color: '#00E5FF',
-    fontSize: 12,
-    fontWeight: Typography.bold,
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(239, 68, 68, 0.15)',
-    borderWidth: 1,
-    borderColor: Colors.danger,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    gap: Spacing.sm,
-  },
-  errorIcon: {
-    fontSize: 18,
-  },
-  errorText: {
-    flex: 1,
-    color: Colors.danger,
-    fontSize: Typography.xs,
-    fontWeight: Typography.medium,
-  },
-  settingsButton: {
-    backgroundColor: Colors.danger,
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: Radius.sm,
-  },
-  settingsButtonText: {
-    color: Colors.white,
-    fontSize: 11,
-    fontWeight: Typography.bold,
-  },
-  heroCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    marginBottom: Spacing.lg,
-    ...Shadow.md,
-  },
-  heroIconBadge: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: Spacing.md,
-  },
-  heroBadgeEmoji: {
-    fontSize: 32,
-  },
-  heroTitle: {
-    fontSize: Typography.xl,
-    fontWeight: Typography.bold,
-    color: Colors.textPrimary,
-    marginBottom: Spacing.xs,
-    textAlign: 'center',
-  },
-  heroSubtitle: {
-    fontSize: Typography.sm,
-    color: Colors.textMuted,
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: Spacing.lg,
-    paddingHorizontal: Spacing.xs,
-  },
-  featuresList: {
-    width: '100%',
-    backgroundColor: Colors.bgElevated,
-    borderRadius: Radius.lg,
-    padding: Spacing.md,
-    marginBottom: Spacing.xl,
-    gap: Spacing.sm,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-  },
-  featureDot: {
-    color: Colors.success,
-    fontSize: 14,
-    fontWeight: Typography.bold,
-  },
-  featureText: {
-    color: Colors.textSecondary,
-    fontSize: Typography.xs,
-    flex: 1,
-  },
-  scanLaunchBtn: {
-    width: '100%',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing.md + 2,
-    gap: Spacing.sm,
-    ...Shadow.lg,
-  },
-  scanLaunchBtnIcon: {
-    fontSize: 20,
-  },
-  scanLaunchBtnText: {
-    color: Colors.white,
-    fontSize: Typography.base,
-    fontWeight: Typography.bold,
-  },
-  btnDisabled: {
-    opacity: 0.6,
-  },
-  previewContainer: {
-    marginBottom: Spacing.lg,
-  },
-  previewCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.xl,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  previewHeader: {
+  topBarBlur: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing.sm,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 30,
   },
-  previewStatusTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 3,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.4)',
-    gap: 4,
-  },
-  previewStatusIcon: {
-    fontSize: 12,
-  },
-  previewStatusText: {
-    color: Colors.success,
-    fontSize: 11,
-    fontWeight: Typography.bold,
-  },
-  previewFileName: {
-    color: Colors.textMuted,
-    fontSize: Typography.xs,
-    maxWidth: 160,
-  },
-  imageWrapper: {
-    alignSelf: 'center',
-    borderRadius: Radius.lg,
-    backgroundColor: '#030712',
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: Colors.border,
-    marginBottom: Spacing.md,
-  },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-  },
-  pdfPlaceholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: Spacing.lg,
-  },
-  pdfFileName: {
-    color: Colors.textPrimary,
-    fontSize: Typography.sm,
-    fontWeight: Typography.bold,
-    marginTop: Spacing.sm,
-  },
-  pdfSubtext: {
-    color: Colors.textMuted,
-    fontSize: Typography.xs,
-    marginTop: 4,
-  },
-  processingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(3, 7, 18, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    padding: Spacing.md,
-  },
-  processingText: {
-    color: Colors.textPrimary,
-    fontSize: Typography.xs,
-    fontWeight: Typography.medium,
-    textAlign: 'center',
-  },
-  parsedDataSummary: {
-    backgroundColor: Colors.bgElevated,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    marginBottom: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  parsedDataTitle: {
-    fontSize: 11,
-    color: Colors.textMuted,
-    fontWeight: Typography.bold,
-    textTransform: 'uppercase',
-    marginBottom: Spacing.xs,
-  },
-  parsedDataChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: Spacing.xs,
-  },
-  chip: {
-    backgroundColor: 'rgba(59, 130, 246, 0.15)',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 4,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(59, 130, 246, 0.3)',
-  },
-  chipText: {
-    color: Colors.textPrimary,
-    fontSize: 11,
-    fontWeight: Typography.medium,
-  },
-  actionButtonsRow: {
-    gap: Spacing.sm,
-  },
-  primaryActionBtn: {
-    backgroundColor: Colors.primaryDark,
-    borderColor: Colors.primary,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-    ...Shadow.md,
-  },
-  primaryActionBtnText: {
-    color: Colors.white,
-    fontSize: Typography.base,
-    fontWeight: Typography.bold,
-  },
-  secondaryActionBtn: {
-    backgroundColor: Colors.bgElevated,
-    borderColor: Colors.border,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing.md,
-    alignItems: 'center',
-  },
-  secondaryActionBtnText: {
-    color: Colors.textSecondary,
-    fontSize: Typography.sm,
-    fontWeight: Typography.semibold,
-  },
-  alternativeCard: {
-    backgroundColor: Colors.bgCard,
-    borderRadius: Radius.xl,
-    padding: Spacing.lg,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  alternativeTitle: {
-    color: Colors.textMuted,
-    fontSize: 11,
-    fontWeight: Typography.bold,
-    textTransform: 'uppercase',
-    marginBottom: Spacing.md,
-  },
-  alternativeButtons: {
-    flexDirection: 'row',
-    gap: Spacing.md,
-  },
-  altBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.xs,
-    backgroundColor: Colors.bgElevated,
-    borderRadius: Radius.lg,
-    paddingVertical: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  altBtnIcon: {
+  topBarTitle: {
+    color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'android' ? 'sans-serif-medium' : 'System',
   },
-  altBtnText: {
-    color: Colors.textPrimary,
-    fontSize: Typography.xs,
-    fontWeight: Typography.semibold,
+
+  /* LAYER 2: Targeting HUD */
+  hudOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  targetingContainer: {
+    width: '80%',
+    aspectRatio: 0.75,
+    position: 'relative',
+  },
+  cornerBracket: {
+    position: 'absolute',
+    width: 40,
+    height: 40,
+    borderColor: '#00E5FF',
+    shadowColor: '#00E5FF',
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  bracketTopLeft: {
+    top: 0,
+    left: 0,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+  },
+  bracketTopRight: {
+    top: 0,
+    right: 0,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+  },
+  bracketBottomLeft: {
+    bottom: 0,
+    left: 0,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+  },
+  bracketBottomRight: {
+    bottom: 0,
+    right: 0,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+  },
+  hudStatusText: {
+    color: '#00E5FF',
+    fontSize: 12,
+    letterSpacing: 1.5,
+    marginTop: 30,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
+    fontWeight: '600',
+    textShadowColor: 'rgba(0, 229, 255, 0.6)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 8,
+  },
+
+  /* LAYER 3: Bottom Control Bar */
+  bottomBarWrapper: {
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
+    width: '85%',
+    zIndex: 10,
+    borderRadius: 40,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(10, 15, 29, 0.75)',
+  },
+  bottomBarBlur: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 40,
+  },
+  shutterOuterRing: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    borderWidth: 2,
+    borderColor: '#00E5FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  shutterInnerCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#00E5FF',
+    shadowColor: '#00E5FF',
+    shadowRadius: 8,
+    shadowOpacity: 0.8,
+    elevation: 8,
+  },
+
+  /* Fallback & Loading Screens */
+  fallbackContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  fallbackCard: {
+    width: '100%',
+    backgroundColor: '#0A0F1D',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.3)',
+    padding: 28,
+    alignItems: 'center',
+    shadowColor: '#00E5FF',
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  fallbackIcon: {
+    marginBottom: 16,
+  },
+  fallbackTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    letterSpacing: 2,
+    marginBottom: 12,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'android' ? 'monospace' : 'System',
+  },
+  fallbackSubtitle: {
+    color: '#8A99AD',
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  permissionButton: {
+    width: '100%',
+    backgroundColor: '#00E5FF',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 12,
+    shadowColor: '#00E5FF',
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  permissionButtonText: {
+    color: '#000000',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+  fallbackCloseButton: {
+    paddingVertical: 10,
+  },
+  fallbackCloseText: {
+    color: '#5A6E85',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  loadingText: {
+    color: '#00E5FF',
+    fontSize: 12,
+    letterSpacing: 1.5,
+    marginTop: 18,
+    fontFamily: Platform.OS === 'android' ? 'monospace' : 'System',
   },
 });
