@@ -1,8 +1,9 @@
 import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
-import { PersonalFieldKey, PersonalVaultData } from '../types/app';
+import { PersonalFieldKey } from '../types/app';
 
 export type FormTemplate = {
   id: string;
@@ -18,7 +19,7 @@ export const COMMON_TEMPLATES: FormTemplate[] = [
     id: 'college_admission',
     title: 'College Admission Form',
     category: 'Education',
-    icon: '🎓',
+    icon: 'school',
     description: 'Standard Indian university admission and registration form.',
     requiredFields: ['name', 'dob', 'address', 'phone'],
   },
@@ -26,7 +27,7 @@ export const COMMON_TEMPLATES: FormTemplate[] = [
     id: 'passport_india',
     title: 'Indian Passport Application',
     category: 'Government',
-    icon: '🛂',
+    icon: 'passport',
     description: 'Ministry of External Affairs Passport Seva Kendra application.',
     requiredFields: ['name', 'dob', 'address', 'phone'],
   },
@@ -34,7 +35,7 @@ export const COMMON_TEMPLATES: FormTemplate[] = [
     id: 'job_application',
     title: 'Standard Job Application',
     category: 'Employment',
-    icon: '💼',
+    icon: 'briefcase',
     description: 'Candidate personal details and contact declaration form.',
     requiredFields: ['name', 'phone', 'address', 'dob'],
   },
@@ -42,7 +43,7 @@ export const COMMON_TEMPLATES: FormTemplate[] = [
     id: 'driving_license',
     title: 'Driving License Learner Form',
     category: 'Transport',
-    icon: '🚗',
+    icon: 'car',
     description: 'Parivahan Sarathi driving license application form.',
     requiredFields: ['name', 'dob', 'address', 'phone'],
   },
@@ -50,7 +51,7 @@ export const COMMON_TEMPLATES: FormTemplate[] = [
     id: 'bank_account',
     title: 'Bank Account Opening (KYC)',
     category: 'Banking',
-    icon: '🏦',
+    icon: 'bank',
     description: 'Customer verification and account opening declaration.',
     requiredFields: ['name', 'address', 'phone', 'dob'],
   },
@@ -82,7 +83,7 @@ export default function QuickFillTemplatesModal({
               accessibilityRole="button"
               accessibilityLabel="Close template selector"
             >
-              <Text style={styles.closeText}>✕</Text>
+              <MaterialCommunityIcons name="close" size={16} color={Colors.textSecondary} />
             </Pressable>
           </View>
 
@@ -99,13 +100,22 @@ export default function QuickFillTemplatesModal({
                 accessibilityLabel={`${tpl.title}, ${tpl.category}`}
               >
                 <View style={styles.cardHeader}>
-                  <Text style={styles.icon}>{tpl.icon}</Text>
+                  <View style={styles.iconWrap}>
+                    <MaterialCommunityIcons
+                      name={tpl.icon as keyof typeof MaterialCommunityIcons.glyphMap}
+                      size={24}
+                      color={Colors.primaryLight}
+                    />
+                  </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.cardTitle}>{tpl.title}</Text>
                     <Text style={styles.cardCategory}>{tpl.category}</Text>
                   </View>
                   <View style={styles.autoBadge}>
-                    <Text style={styles.autoBadgeText}>⚡ Auto-fill</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 3 }}>
+                      <MaterialCommunityIcons name="lightning-bolt" size={12} color={Colors.primaryLight} />
+                      <Text style={styles.autoBadgeText}>Auto-fill</Text>
+                    </View>
                   </View>
                 </View>
                 <Text style={styles.cardDesc}>{tpl.description}</Text>
@@ -190,8 +200,13 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     marginBottom: 6,
   },
-  icon: {
-    fontSize: 28,
+  iconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.primaryMuted,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   cardTitle: {
     fontSize: Typography.base,

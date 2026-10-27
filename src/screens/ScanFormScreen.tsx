@@ -12,8 +12,8 @@ import {
   Camera,
   useCameraDevice,
   useCameraPermission,
+  usePhotoOutput,
 } from 'react-native-vision-camera';
-import { BlurView } from '@react-native-community/blur';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -21,22 +21,36 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { Feather } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
+import Colors from '../theme/colors';
+import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
+import { useLanguage } from '../i18n/LanguageContext';
 
 export default function ScanFormScreen() {
   const navigation = useNavigation<any>();
+  const isFocused = useIsFocused();
+  const { t, language } = useLanguage();
 
-  // 1. Vision Camera hooks for device and runtime permissions
+  // 1. Vision Camera device and runtime permissions
   const { hasPermission, requestPermission } = useCameraPermission();
   const device = useCameraDevice('back');
+  const hasTorch = Boolean(device?.hasTorch);
 
-  // Flash / Torch state toggle
+  // 2. Camera lifecycle & torch state
+  const [isCameraReady, setIsCameraReady] = useState<boolean>(false);
   const [torchOn, setTorchOn] = useState<boolean>(false);
+  const [isCapturing, setIsCapturing] = useState<boolean>(false);
 
-  // 2. Reanimated shared value for smooth HUD text pulsing
-  const pulseOpacity = useSharedValue(0.3);
+  // 3. Vision Camera photo output configuration
+  const photoOutput = usePhotoOutput({
+    quality: 0.92,
+    qualityPrioritization: 'balanced',
+  });
+
+  // 4. Reanimated shared value for smooth HUD text pulsing
+  const pulseOpacity = useSharedValue(0.4);
 
   // Request camera permissions on mount if not yet granted
   useEffect(() => {
@@ -45,25 +59,24 @@ export default function ScanFormScreen() {
     }
   }, [hasPermission, requestPermission]);
 
-  // Start continuous infinite pulse animation (0.3 <-> 1.0)
+  // Start continuous pulse animation for targeting HUD
   useEffect(() => {
     pulseOpacity.value = withRepeat(
-      withTiming(1.0, { duration: 1000 }),
+      withTiming(1.0, { duration: 900 }),
       -1,
       true
     );
   }, [pulseOpacity]);
 
-  // Animated style binding for HUD status text
   const animatedTextStyle = useAnimatedStyle(() => ({
     opacity: pulseOpacity.value,
   }));
 
-  // Shutter button spring physics (120Hz native touch tracking & momentum)
+  // Shutter button spring physics (120Hz native touch tracking)
   const shutterScale = useSharedValue(1);
 
   const handleShutterPressIn = () => {
-    shutterScale.value = withSpring(0.86, { damping: 15, stiffness: 350 });
+    shutterScale.value = withSpring(0.88, { damping: 14, stiffness: 350 });
   };
 
   const handleShutterPressOut = () => {
@@ -74,7 +87,58 @@ export default function ScanFormScreen() {
     transform: [{ scale: shutterScale.value }],
   }));
 
-  // Handle Pick Document / Image from device gallery
+  // Suppress transient CameraX lifecycle errors while camera mounts
+  const handleCameraError = (error: any) => {
+    const msg = error?.message || '';
+    if (
+      msg.includes('OperationCanceledException') ||
+      msg.includes('Camera is not active') ||
+      msg.includes('CameraControl')
+    ) {
+      // Expected during initial session negotiation
+      return;
+    }
+    console.warn('VisionCamera session warning:', msg);
+  };
+
+  // Capture photo from native camera pipeline
+  const handleCapturePhoto = async () => {
+    if (isCapturing || !isCameraReady) return;
+    try {
+      setIsCapturing(true);
+      const photoFile = await photoOutput.capturePhotoToFile(
+        {
+          flashMode: torchOn && hasTorch ? 'on' : 'off',
+          enableShutterSound: true,
+        },
+        {}
+      );
+
+      navigation.navigate('OCRResult', {
+        imageUri: `file://${photoFile.filePath}`,
+      });
+    } catch (err: any) {
+      console.warn('Primary capture failed, attempting fallback:', err);
+      // Fallback: system camera picker if native camera capture threw
+      try {
+        const result = await ImagePicker.launchCameraAsync({
+          quality: 0.9,
+          allowsEditing: false,
+        });
+        if (!result.canceled && result.assets[0]?.uri) {
+          navigation.navigate('OCRResult', {
+            imageUri: result.assets[0].uri,
+          });
+        }
+      } catch (fallbackErr) {
+        console.error('Fallback camera error:', fallbackErr);
+      }
+    } finally {
+      setIsCapturing(false);
+    }
+  };
+
+  // Pick existing document or photo from device gallery
   const handleOpenGallery = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -93,155 +157,214 @@ export default function ScanFormScreen() {
     }
   };
 
-  // 1. Fallback screen if camera permission is denied
+  // Toggle flash torch safely
+  const handleToggleTorch = () => {
+    if (!hasTorch) return;
+    setTorchOn((prev) => !prev);
+  };
+
+  // Permission fallback screen
   if (!hasPermission) {
     return (
       <View style={styles.fallbackContainer}>
         <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
         <View style={styles.fallbackCard}>
-          <Feather name="camera-off" size={48} color="#00E5FF" style={styles.fallbackIcon} />
-          <Text style={styles.fallbackTitle}>CAMERA ACCESS REQUIRED</Text>
+          <View style={styles.fallbackIconBadge}>
+            <MaterialCommunityIcons
+              name="camera-off"
+              size={36}
+              color={Colors.primary}
+            />
+          </View>
+          <Text style={styles.fallbackTitle}>
+            {language === 'ml' ? 'ക്യാമറ അനുമതി ആവശ്യമാണ്' : 'Camera Access Required'}
+          </Text>
           <Text style={styles.fallbackSubtitle}>
-            To engage the AI targeting scanner and digitize your documents, please grant camera permissions.
+            {language === 'ml'
+              ? 'ഫോമുകൾ സ്കാൻ ചെയ്യാനും അക്ഷരങ്ങൾ തിരിച്ചറിയാനും ക്യാമറ അനുമതി നൽകുക.'
+              : 'FH needs camera access to capture physical paperwork and automatically extract form fields.'}
           </Text>
           <TouchableOpacity
             style={styles.permissionButton}
             onPress={requestPermission}
-            activeOpacity={0.8}
+            activeOpacity={0.85}
           >
-            <Text style={styles.permissionButtonText}>ENABLE SENSORS</Text>
+            <MaterialCommunityIcons name="camera" size={20} color={Colors.textInverse} />
+            <Text style={styles.permissionButtonText}>
+              {language === 'ml' ? 'അനുമതി നൽകുക' : 'Grant Permission'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.fallbackCloseButton}
             onPress={() => navigation.goBack()}
             activeOpacity={0.7}
           >
-            <Text style={styles.fallbackCloseText}>RETURN TO DASHBOARD</Text>
+            <Text style={styles.fallbackCloseText}>
+              {language === 'ml' ? 'തിരികെ പോവുക' : 'Return to Home'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
     );
   }
 
-  // 2. Fallback loader if camera device is initializing
+  // Camera initializing state
   if (device == null) {
     return (
       <View style={styles.fallbackContainer}>
         <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
-        <ActivityIndicator size="large" color="#00E5FF" />
-        <Text style={styles.loadingText}>INITIALIZING OPTICAL SENSORS...</Text>
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>
+          {language === 'ml' ? 'ക്യാമറ ആരംഭിക്കുന്നു...' : 'Initializing Camera...'}
+        </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.root}>
-      {/* 2. ROOT CONTAINER & STATUS BAR */}
       <StatusBar translucent backgroundColor="transparent" barStyle="light-content" />
 
-      {/* 3. LAYER 0: THE CAMERA */}
+      {/* 1. NATIVE VISION CAMERA */}
       <Camera
         style={StyleSheet.absoluteFillObject}
         device={device}
-        isActive={true}
-        torchMode={torchOn ? 'on' : 'off'}
+        isActive={isFocused}
+        outputs={[photoOutput]}
+        torchMode={isCameraReady && torchOn && hasTorch ? 'on' : undefined}
         enableNativeZoomGesture={true}
+        onStarted={() => setIsCameraReady(true)}
+        onStopped={() => setIsCameraReady(false)}
+        onError={handleCameraError}
       />
 
-      {/* 4. LAYER 1: TOP ACTION BAR (FROSTED PILL) */}
+      {/* 2. TOP ACTION HEADER */}
       <View style={styles.topBarWrapper}>
-        <BlurView
-          blurType="dark"
-          blurAmount={60}
-          overlayColor="rgba(10, 15, 29, 0.65)"
-          style={styles.topBarBlur}
-        >
-          {/* Left: Flash / Torch Toggle */}
+        <View style={styles.topBarContent}>
+          {/* Back button */}
           <TouchableOpacity
-            onPress={() => setTorchOn((prev) => !prev)}
-            activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+            onPress={() => navigation.goBack()}
+            activeOpacity={0.75}
+            style={styles.headerIconButton}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Feather
-              name="zap"
+            <MaterialCommunityIcons name="arrow-left" size={24} color={Colors.textPrimary} />
+          </TouchableOpacity>
+
+          {/* Screen Title Pill */}
+          <View style={styles.titleBadge}>
+            <MaterialCommunityIcons
+              name="text-recognition"
+              size={18}
+              color={Colors.primary}
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.topBarTitle}>
+              {language === 'ml' ? 'ഫോം സ്കാൻ' : 'Scan Form'}
+            </Text>
+          </View>
+
+          {/* Torch Toggle */}
+          <TouchableOpacity
+            onPress={handleToggleTorch}
+            activeOpacity={0.75}
+            disabled={!hasTorch}
+            style={[
+              styles.headerIconButton,
+              torchOn && styles.headerIconButtonActive,
+              !hasTorch && { opacity: 0.35 },
+            ]}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <MaterialCommunityIcons
+              name={torchOn ? 'flash' : 'flash-off'}
               size={22}
-              color={torchOn ? '#00E5FF' : '#FFFFFF'}
+              color={torchOn ? Colors.primary : Colors.textSecondary}
             />
           </TouchableOpacity>
-
-          {/* Center: AI Scanner Brand */}
-          <Text style={styles.topBarTitle}>AI SCANNER</Text>
-
-          {/* Right: Sliders / Settings Icon */}
-          <TouchableOpacity
-            onPress={() => {}}
-            activeOpacity={0.7}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Feather name="sliders" size={22} color="#FFFFFF" />
-          </TouchableOpacity>
-        </BlurView>
+        </View>
       </View>
 
-      {/* 5. LAYER 2: THE CYBER CYAN TARGETING HUD */}
+      {/* 3. ELEGANT TARGETING HUD */}
       <View style={styles.hudOverlay} pointerEvents="none">
         <View style={styles.targetingContainer}>
-          {/* Top-Left Corner Bracket */}
+          {/* Targeting Corner Brackets */}
           <View style={[styles.cornerBracket, styles.bracketTopLeft]} />
-
-          {/* Top-Right Corner Bracket */}
           <View style={[styles.cornerBracket, styles.bracketTopRight]} />
-
-          {/* Bottom-Left Corner Bracket */}
           <View style={[styles.cornerBracket, styles.bracketBottomLeft]} />
-
-          {/* Bottom-Right Corner Bracket */}
           <View style={[styles.cornerBracket, styles.bracketBottomRight]} />
+
+          {/* Subtle guide line */}
+          <View style={styles.centerGuide} />
         </View>
 
-        {/* Pulsing Status Text */}
-        <Animated.Text style={[styles.hudStatusText, animatedTextStyle]}>
-          DETECTING DOCUMENT...
-        </Animated.Text>
+        {/* Status Pill with Malayalam & English */}
+        <Animated.View style={[styles.hudStatusBadge, animatedTextStyle]}>
+          <MaterialCommunityIcons
+            name="file-document-outline"
+            size={16}
+            color={Colors.primary}
+            style={{ marginRight: 6 }}
+          />
+          <Text style={styles.hudStatusText}>
+            {language === 'ml'
+              ? 'രേഖ ഫ്രെയിമിനുള്ളിൽ വെക്കുക'
+              : 'Align document within the frame'}
+          </Text>
+        </Animated.View>
       </View>
 
-      {/* 6. LAYER 3: BOTTOM CONTROL BAR (FROSTED PILL) */}
+      {/* 4. BOTTOM CONTROLS */}
       <View style={styles.bottomBarWrapper}>
-        <BlurView
-          blurType="dark"
-          blurAmount={60}
-          overlayColor="rgba(10, 15, 29, 0.65)"
-          style={styles.bottomBarBlur}
-        >
-          {/* Left: Gallery Icon */}
+        <View style={styles.bottomBarContent}>
+          {/* Gallery Button */}
           <TouchableOpacity
             onPress={handleOpenGallery}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
+            style={styles.actionRoundButton}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather name="image" size={28} color="#AAAAAA" />
+            <MaterialCommunityIcons name="image-outline" size={26} color={Colors.textPrimary} />
+            <Text style={styles.actionButtonLabel}>
+              {language === 'ml' ? 'ഗ്യാലറി' : 'Gallery'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Center: Cyber Shutter Button with tactile spring physics */}
+          {/* Shutter Button */}
           <TouchableOpacity
             style={styles.shutterOuterRing}
             onPressIn={handleShutterPressIn}
             onPressOut={handleShutterPressOut}
-            onPress={() => {}}
-            activeOpacity={1}
+            onPress={handleCapturePhoto}
+            disabled={isCapturing}
+            activeOpacity={0.9}
           >
-            <Animated.View style={[styles.shutterInnerCircle, animatedShutterStyle]} />
+            <Animated.View style={[styles.shutterInnerCircle, animatedShutterStyle]}>
+              {isCapturing ? (
+                <ActivityIndicator size="small" color={Colors.textInverse} />
+              ) : (
+                <MaterialCommunityIcons
+                  name="camera"
+                  size={32}
+                  color={Colors.textInverse}
+                />
+              )}
+            </Animated.View>
           </TouchableOpacity>
 
-          {/* Right: Close Screen */}
+          {/* Close Screen */}
           <TouchableOpacity
             onPress={() => navigation.goBack()}
-            activeOpacity={0.7}
+            activeOpacity={0.75}
+            style={styles.actionRoundButton}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
-            <Feather name="x" size={28} color="#AAAAAA" />
+            <MaterialCommunityIcons name="close" size={26} color={Colors.textSecondary} />
+            <Text style={styles.actionButtonLabel}>
+              {language === 'ml' ? 'റദ്ദാക്കുക' : 'Cancel'}
+            </Text>
           </TouchableOpacity>
-        </BlurView>
+        </View>
       </View>
     </View>
   );
@@ -253,37 +376,55 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
   },
 
-  /* LAYER 1: Top Action Bar */
+  /* Top Action Header */
   topBarWrapper: {
     position: 'absolute',
-    top: 50,
-    alignSelf: 'center',
-    width: '90%',
-    zIndex: 10,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(10, 15, 29, 0.75)',
+    top: Platform.OS === 'android' ? 44 : 54,
+    left: Spacing.base,
+    right: Spacing.base,
+    zIndex: 20,
   },
-  topBarBlur: {
+  topBarContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 30,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(10, 14, 27, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    ...Shadow.md,
+  },
+  headerIconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.full,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  headerIconButtonActive: {
+    backgroundColor: Colors.primarySubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderAccent,
+  },
+  titleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(232, 145, 58, 0.12)',
   },
   topBarTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 2,
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'android' ? 'sans-serif-medium' : 'System',
+    color: Colors.textPrimary,
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
+    letterSpacing: 0.5,
   },
 
-  /* LAYER 2: Targeting HUD */
+  /* Targeting HUD */
   hudOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
@@ -291,170 +432,195 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   targetingContainer: {
-    width: '80%',
-    aspectRatio: 0.75,
+    width: '84%',
+    aspectRatio: 0.72,
     position: 'relative',
+    borderRadius: Radius.lg,
   },
   cornerBracket: {
     position: 'absolute',
-    width: 40,
-    height: 40,
-    borderColor: '#00E5FF',
-    shadowColor: '#00E5FF',
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    elevation: 10,
+    width: 36,
+    height: 36,
+    borderColor: Colors.primary,
   },
   bracketTopLeft: {
     top: 0,
     left: 0,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
+    borderTopWidth: 3.5,
+    borderLeftWidth: 3.5,
+    borderTopLeftRadius: 10,
   },
   bracketTopRight: {
     top: 0,
     right: 0,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
+    borderTopWidth: 3.5,
+    borderRightWidth: 3.5,
+    borderTopRightRadius: 10,
   },
   bracketBottomLeft: {
     bottom: 0,
     left: 0,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
+    borderBottomWidth: 3.5,
+    borderLeftWidth: 3.5,
+    borderBottomLeftRadius: 10,
   },
   bracketBottomRight: {
     bottom: 0,
     right: 0,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
+    borderBottomWidth: 3.5,
+    borderRightWidth: 3.5,
+    borderBottomRightRadius: 10,
+  },
+  centerGuide: {
+    position: 'absolute',
+    top: '50%',
+    left: 20,
+    right: 20,
+    height: 1,
+    backgroundColor: 'rgba(232, 145, 58, 0.25)',
+  },
+  hudStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(10, 14, 27, 0.88)',
+    paddingHorizontal: Spacing.base,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 145, 58, 0.35)',
+    marginTop: Spacing.xl,
+    ...Shadow.md,
   },
   hudStatusText: {
-    color: '#00E5FF',
-    fontSize: 12,
-    letterSpacing: 1.5,
-    marginTop: 30,
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'android' ? 'monospace' : 'Menlo',
-    fontWeight: '600',
-    textShadowColor: 'rgba(0, 229, 255, 0.6)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 8,
+    color: Colors.textPrimary,
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
+    letterSpacing: 0.3,
   },
 
-  /* LAYER 3: Bottom Control Bar */
+  /* Bottom Controls */
   bottomBarWrapper: {
     position: 'absolute',
-    bottom: 40,
-    alignSelf: 'center',
-    width: '85%',
-    zIndex: 10,
-    borderRadius: 40,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.15)',
-    overflow: 'hidden',
-    backgroundColor: 'rgba(10, 15, 29, 0.75)',
+    bottom: Platform.OS === 'android' ? 36 : 48,
+    left: Spacing.base,
+    right: Spacing.base,
+    zIndex: 20,
   },
-  bottomBarBlur: {
+  bottomBarContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 15,
-    paddingHorizontal: 30,
-    borderRadius: 40,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: Radius['2xl'],
+    backgroundColor: 'rgba(10, 14, 27, 0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    ...Shadow.lg,
+  },
+  actionRoundButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 60,
+  },
+  actionButtonLabel: {
+    color: Colors.textSecondary,
+    fontSize: Typography.xs,
+    fontWeight: Typography.medium,
+    marginTop: 4,
   },
   shutterOuterRing: {
     width: 76,
     height: 76,
     borderRadius: 38,
-    borderWidth: 2,
-    borderColor: '#00E5FF',
+    borderWidth: 3,
+    borderColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(232, 145, 58, 0.15)',
+    ...Shadow.glow,
   },
   shutterInnerCircle: {
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#00E5FF',
-    shadowColor: '#00E5FF',
-    shadowRadius: 8,
-    shadowOpacity: 0.8,
-    elevation: 8,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   /* Fallback & Loading Screens */
   fallbackContainer: {
     flex: 1,
-    backgroundColor: '#000000',
+    backgroundColor: Colors.bg,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 24,
+    padding: Spacing.xl,
   },
   fallbackCard: {
     width: '100%',
-    backgroundColor: '#0A0F1D',
-    borderRadius: 24,
+    backgroundColor: Colors.bgCard,
+    borderRadius: Radius['2xl'],
     borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.3)',
-    padding: 28,
+    borderColor: Colors.border,
+    padding: Spacing.xl,
     alignItems: 'center',
-    shadowColor: '#00E5FF',
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
+    ...Shadow.md,
   },
-  fallbackIcon: {
-    marginBottom: 16,
+  fallbackIconBadge: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.primarySubtle,
+    borderWidth: 1,
+    borderColor: Colors.borderAccent,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.base,
   },
   fallbackTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 2,
-    marginBottom: 12,
+    color: Colors.textPrimary,
+    fontSize: Typography.lg,
+    fontWeight: Typography.bold,
+    marginBottom: Spacing.sm,
     textAlign: 'center',
-    fontFamily: Platform.OS === 'android' ? 'monospace' : 'System',
   },
   fallbackSubtitle: {
-    color: '#8A99AD',
-    fontSize: 13,
-    lineHeight: 20,
+    color: Colors.textSecondary,
+    fontSize: Typography.sm,
+    lineHeight: 22,
     textAlign: 'center',
-    marginBottom: 24,
+    marginBottom: Spacing.xl,
   },
   permissionButton: {
+    flexDirection: 'row',
     width: '100%',
-    backgroundColor: '#00E5FF',
-    borderRadius: 14,
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.lg,
     paddingVertical: 14,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 12,
-    shadowColor: '#00E5FF',
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 6,
+    marginBottom: Spacing.md,
+    gap: 8,
+    ...Shadow.glow,
   },
   permissionButtonText: {
-    color: '#000000',
-    fontSize: 13,
-    fontWeight: '800',
-    letterSpacing: 1.5,
+    color: Colors.textInverse,
+    fontSize: Typography.sm,
+    fontWeight: Typography.bold,
   },
   fallbackCloseButton: {
-    paddingVertical: 10,
+    paddingVertical: Spacing.sm,
   },
   fallbackCloseText: {
-    color: '#5A6E85',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
+    color: Colors.textMuted,
+    fontSize: Typography.xs,
+    fontWeight: Typography.semibold,
   },
   loadingText: {
-    color: '#00E5FF',
-    fontSize: 12,
-    letterSpacing: 1.5,
-    marginTop: 18,
-    fontFamily: Platform.OS === 'android' ? 'monospace' : 'System',
+    color: Colors.primary,
+    fontSize: Typography.sm,
+    fontWeight: Typography.semibold,
+    marginTop: Spacing.base,
   },
 });

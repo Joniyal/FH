@@ -1,11 +1,13 @@
 import React, { useRef } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 
 type LargeActionButtonProps = {
   label: string;
   subLabel?: string;
+  /** MaterialCommunityIcons icon name */
   icon?: string;
   onPress: () => void;
   variant?: 'primary' | 'secondary' | 'ghost';
@@ -43,6 +45,12 @@ export default function LargeActionButton({
   const isPrimary = variant === 'primary';
   const isSecondary = variant === 'secondary';
 
+  const iconColor = isPrimary
+    ? Colors.primaryLight
+    : isSecondary
+    ? Colors.textSecondary
+    : Colors.textMuted;
+
   return (
     <Animated.View style={[{ transform: [{ scale }] }, disabled && styles.disabled]}>
       <Pressable
@@ -62,7 +70,11 @@ export default function LargeActionButton({
         <View style={styles.content}>
           {icon ? (
             <View style={[styles.iconWrap, isPrimary && styles.iconWrapPrimary]}>
-              <Text style={styles.icon}>{icon}</Text>
+              <MaterialCommunityIcons
+                name={icon as keyof typeof MaterialCommunityIcons.glyphMap}
+                size={22}
+                color={iconColor}
+              />
             </View>
           ) : null}
           <View style={styles.textBlock}>
@@ -82,10 +94,11 @@ export default function LargeActionButton({
               </Text>
             ) : null}
           </View>
-          <Text style={[
-            styles.arrow,
-            isSecondary && styles.arrowSecondary,
-          ]}>›</Text>
+          <MaterialCommunityIcons
+            name="chevron-right"
+            size={24}
+            color={isSecondary ? Colors.textMuted : Colors.primaryLight}
+          />
         </View>
       </Pressable>
     </Animated.View>
@@ -132,10 +145,6 @@ const styles = StyleSheet.create({
   iconWrapPrimary: {
     backgroundColor: Colors.primaryMuted,
   },
-  icon: {
-    fontSize: 22,
-    lineHeight: 28,
-  },
   textBlock: {
     flex: 1,
   },
@@ -159,15 +168,6 @@ const styles = StyleSheet.create({
   },
   subTextSecondary: {
     color: Colors.textSecondary,
-  },
-  arrow: {
-    color: Colors.primaryLight,
-    fontSize: 28,
-    fontWeight: Typography.bold,
-    lineHeight: 34,
-  },
-  arrowSecondary: {
-    color: Colors.textMuted,
   },
   disabled: {
     opacity: 0.45,

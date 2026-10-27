@@ -25,6 +25,10 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
+build_*.txt
+ndk_install*.txt
+phone_*.png
 
 # macOS
 .DS_Store

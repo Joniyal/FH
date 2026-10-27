@@ -1,21 +1,22 @@
 import React, { useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 
 const STEPS = [
   {
-    icon: '📷',
+    icon: 'camera' as const,
     title: 'Scan Any Paper Form',
     desc: 'Point your camera at any application form, college admission slip, or official document. Auto-detect borders and enhance clarity.',
   },
   {
-    icon: '🔐',
+    icon: 'shield-lock' as const,
     title: 'Offline Vault Protection',
     desc: 'Keep your name, phone number, address, and date of birth stored privately in your offline encrypted Vault. No cloud uploads.',
   },
   {
-    icon: '⚡',
+    icon: 'lightning-bolt' as const,
     title: 'Auto-Fill & Voice Assist',
     desc: 'Match blank form boxes automatically with your Vault data. Use voice recognition in English or Malayalam to answer missing questions.',
   },
@@ -64,7 +65,11 @@ export default function OnboardingModal({ visible, onDismiss }: OnboardingModalP
 
           <View style={styles.contentBox}>
             <View style={styles.iconCircle}>
-              <Text style={styles.iconText}>{STEPS[currentStep].icon}</Text>
+              <MaterialCommunityIcons
+                name={STEPS[currentStep].icon}
+                size={34}
+                color={Colors.primaryLight}
+              />
             </View>
             <Text style={styles.title}>{STEPS[currentStep].title}</Text>
             <Text style={styles.desc}>{STEPS[currentStep].desc}</Text>
@@ -86,7 +91,13 @@ export default function OnboardingModal({ visible, onDismiss }: OnboardingModalP
               accessibilityRole="button"
               accessibilityLabel={isLast ? 'Get Started' : 'Next Step'}
             >
-              <Text style={styles.nextText}>{isLast ? 'Get Started 🚀' : 'Next →'}</Text>
+              <Text style={styles.nextText}>{isLast ? 'Get Started' : 'Next'}</Text>
+              <MaterialCommunityIcons
+                name={isLast ? 'rocket-launch' : 'arrow-right'}
+                size={18}
+                color={Colors.white}
+                style={{ marginLeft: 4 }}
+              />
             </Pressable>
           </View>
         </View>
@@ -147,9 +158,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderAccent,
   },
-  iconText: {
-    fontSize: 34,
-  },
+
   title: {
     fontSize: Typography.xl,
     fontWeight: Typography.bold,

@@ -16,6 +16,7 @@ export const Colors = {
   primaryDark: '#C67520',
   primaryMuted: '#2D1F0E',
   primaryGlow: 'rgba(232, 145, 58, 0.18)',
+  primarySubtle: 'rgba(232, 145, 58, 0.12)',
 
   // Secondary accent — Teal/cyan for interactive highlights
   accent: '#2DD4BF',

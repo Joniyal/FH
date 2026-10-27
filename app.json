@@ -42,12 +42,6 @@
     },
     "plugins": [
       [
-        "expo-camera",
-        {
-          "cameraPermission": "Allow FH to access camera for scanning forms."
-        }
-      ],
-      [
         "expo-image-picker",
         {
           "photosPermission": "Allow FH to access photos to import forms."
@@ -59,8 +53,7 @@
           "microphonePermission": "Allow FH to use microphone for voice input.",
           "speechRecognitionPermission": "Allow FH to use speech recognition for form help."
         }
-      ],
-      "react-native-document-scanner-plugin"
+      ]
     ],
     "extra": {
       "eas": {

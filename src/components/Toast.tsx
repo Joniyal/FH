@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect, ReactNode } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 
@@ -15,11 +16,11 @@ const ToastContext = createContext<ToastContextType>({
 
 export const useToast = () => useContext(ToastContext);
 
-const TOAST_ICONS: Record<ToastType, string> = {
-  success: '✓',
-  error: '✕',
-  warning: '⚠️',
-  info: 'ℹ️',
+const TOAST_ICONS: Record<ToastType, keyof typeof MaterialCommunityIcons.glyphMap> = {
+  success: 'check',
+  error: 'close',
+  warning: 'alert',
+  info: 'information-variant',
 };
 
 const TOAST_COLORS: Record<ToastType, { border: string; bg: string; text: string }> = {
@@ -89,7 +90,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 { backgroundColor: TOAST_COLORS[toast.type].border },
               ]}
             >
-              <Text style={styles.iconText}>{TOAST_ICONS[toast.type]}</Text>
+              <MaterialCommunityIcons name={TOAST_ICONS[toast.type]} size={14} color={Colors.white} />
             </View>
             <Text style={[styles.message, { color: TOAST_COLORS[toast.type].text }]}>
               {toast.message}

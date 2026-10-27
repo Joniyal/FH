@@ -1,25 +1,3 @@
-declare module 'react-native-mlkit-document-scanner' {
-  export interface DocumentScannerOptions {
-    scannerMode?: 'full' | 'base' | 'base_with_filter';
-    letUserAdjustCrop?: boolean;
-    format?: 'jpeg' | 'pdf';
-    maxNumDocuments?: number;
-    responseType?: 'imageFilePath' | 'base64';
-  }
-
-  export interface DocumentScannerResult {
-    scannedImages?: string[];
-    pdf?: string;
-    status?: string;
-  }
-
-  export interface DocumentScannerInterface {
-    scanDocument(options?: DocumentScannerOptions): Promise<DocumentScannerResult>;
-  }
-
-  const DocumentScanner: DocumentScannerInterface;
-  export default DocumentScanner;
-}
 
 declare module '@react-native-ml-kit/text-recognition' {
   export interface TextRecognitionPoint {

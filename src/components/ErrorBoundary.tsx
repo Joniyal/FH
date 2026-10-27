@@ -1,5 +1,6 @@
 import React, { Component, ReactNode } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Colors from '../theme/colors';
 import { Radius, Spacing, Typography } from '../theme/tokens';
 
@@ -26,12 +27,15 @@ export default class ErrorBoundary extends Component<Props, State> {
       return (
         <View style={styles.container}>
           <View style={styles.card}>
-            <Text style={styles.emoji}>🔧</Text>
+            <View style={styles.iconCircle}>
+              <MaterialCommunityIcons name="alert-circle-outline" size={44} color={Colors.warning} />
+            </View>
             <Text style={styles.title}>Something went wrong</Text>
             <Text style={styles.message}>
               {this.state.error?.message || 'An unexpected error occurred.'}
             </Text>
             <Pressable style={styles.retryBtn} onPress={this.handleReset}>
+              <MaterialCommunityIcons name="refresh" size={20} color={Colors.white} style={{ marginRight: Spacing.xs }} />
               <Text style={styles.retryText}>Try Again</Text>
             </Pressable>
           </View>
@@ -60,9 +64,16 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
   },
-  emoji: {
-    fontSize: 56,
-    marginBottom: Spacing.md,
+  iconCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: Colors.warningBg,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: Spacing.lg,
   },
   title: {
     fontSize: Typography['2xl'],
@@ -79,6 +90,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.xl,
   },
   retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.primaryDark,
     borderColor: Colors.primary,
     borderWidth: 1,

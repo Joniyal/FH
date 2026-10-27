@@ -7,11 +7,11 @@ import {
   Text,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import { FormHistoryEntry } from '../types/app';
 import { clearFormHistory, deleteFormHistoryEntry, getFormHistory } from '../services/storageService';
-import { useLanguage } from '../i18n/LanguageContext';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 import { useToast } from '../components/Toast';
@@ -30,7 +30,6 @@ function formatDate(timestamp: number): string {
 }
 
 export default function FormHistoryScreen({ navigation }: Props) {
-  const { t } = useLanguage();
   const { showToast } = useToast();
   const [history, setHistory] = useState<FormHistoryEntry[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -110,7 +109,7 @@ export default function FormHistoryScreen({ navigation }: Props) {
         </View>
       ) : history.length === 0 ? (
         <View style={styles.emptyContainer}>
-          <Text style={styles.emptyIcon}>📋</Text>
+          <MaterialCommunityIcons name="clipboard-text-clock" size={54} color={Colors.textMuted} style={{ marginBottom: Spacing.md }} />
           <Text style={styles.emptyTitle}>No Scans Yet</Text>
           <Text style={styles.emptyText}>
             Forms you scan or upload will be stored here automatically for quick re-access.
@@ -119,7 +118,10 @@ export default function FormHistoryScreen({ navigation }: Props) {
             style={styles.scanNowBtn}
             onPress={() => navigation.navigate('ScanForm')}
           >
-            <Text style={styles.scanNowBtnText}>📷  Scan New Form</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <MaterialCommunityIcons name="camera" size={18} color={Colors.white} />
+              <Text style={styles.scanNowBtnText}>Scan New Form</Text>
+            </View>
           </Pressable>
         </View>
       ) : (
@@ -138,9 +140,11 @@ export default function FormHistoryScreen({ navigation }: Props) {
               >
                 <View style={styles.historyCardLeft}>
                   <View style={styles.typeIconBox}>
-                    <Text style={styles.typeIcon}>
-                      {isPdf ? '📄' : item.formType === 'scan' ? '📷' : '📂'}
-                    </Text>
+                    <MaterialCommunityIcons
+                      name={isPdf ? 'file-document-outline' : item.formType === 'scan' ? 'camera' : 'folder-open'}
+                      size={22}
+                      color={Colors.textSecondary}
+                    />
                   </View>
                   <View style={styles.metaBox}>
                     <Text style={styles.historyTitle}>
@@ -168,7 +172,7 @@ export default function FormHistoryScreen({ navigation }: Props) {
                   }}
                   hitSlop={8}
                 >
-                  <Text style={styles.deleteBtnIcon}>🗑️</Text>
+                  <MaterialCommunityIcons name="delete-outline" size={20} color={Colors.dangerLight} />
                 </Pressable>
               </Pressable>
             );
@@ -222,10 +226,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: Spacing.xl,
-  },
-  emptyIcon: {
-    fontSize: 54,
-    marginBottom: Spacing.md,
   },
   emptyTitle: {
     fontSize: Typography.xl,
@@ -285,9 +285,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
-  typeIcon: {
-    fontSize: 22,
-  },
+
   metaBox: {
     flex: 1,
   },
@@ -330,8 +328,8 @@ const styles = StyleSheet.create({
   },
   deleteBtn: {
     padding: Spacing.sm,
-  },
-  deleteBtnIcon: {
-    fontSize: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: Radius.md,
   },
 });

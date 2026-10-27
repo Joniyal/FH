@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { EMPTY_PERSONAL_VAULT, PersonalVaultData } from '../types/app';
@@ -19,7 +20,6 @@ import { useLanguage } from '../i18n/LanguageContext';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 import { useToast } from '../components/Toast';
-import ProgressRing from '../components/ProgressRing';
 
 const FIELD_CONFIG: {
   key: keyof PersonalVaultData;
@@ -30,10 +30,10 @@ const FIELD_CONFIG: {
   keyboardType?: 'default' | 'phone-pad';
   hint?: string;
 }[] = [
-  { key: 'name', icon: '🪪', labelKey: 'vault.name', placeholderKey: 'vault.placeholderName', hint: 'Full name as on ID' },
-  { key: 'address', icon: '🏠', labelKey: 'vault.address', placeholderKey: 'vault.placeholderAddress', multiline: true, hint: 'Door no, street, city, PIN' },
-  { key: 'phone', icon: '📱', labelKey: 'vault.phone', placeholderKey: 'vault.placeholderPhone', keyboardType: 'phone-pad', hint: '10-digit mobile number' },
-  { key: 'dob', icon: '🎂', labelKey: 'vault.dob', placeholderKey: 'vault.dob', hint: 'DD/MM/YYYY format' },
+  { key: 'name', icon: 'account', labelKey: 'vault.name', placeholderKey: 'vault.placeholderName', hint: 'Full name as on ID' },
+  { key: 'address', icon: 'map-marker', labelKey: 'vault.address', placeholderKey: 'vault.placeholderAddress', multiline: true, hint: 'Door no, street, city, PIN' },
+  { key: 'phone', icon: 'phone', labelKey: 'vault.phone', placeholderKey: 'vault.placeholderPhone', keyboardType: 'phone-pad', hint: '10-digit mobile number' },
+  { key: 'dob', icon: 'calendar', labelKey: 'vault.dob', placeholderKey: 'vault.dob', hint: 'DD/MM/YYYY format' },
 ];
 
 function FieldCard({
@@ -67,7 +67,11 @@ function FieldCard({
     <View style={[styles.fieldCard, focused && styles.fieldCardFocused]}>
       <View style={styles.fieldHeader}>
         <View style={styles.fieldIconWrap}>
-          <Text style={styles.fieldIcon}>{icon}</Text>
+          <MaterialCommunityIcons
+            name={icon as keyof typeof MaterialCommunityIcons.glyphMap}
+            size={20}
+            color={focused ? Colors.primaryLight : Colors.textSecondary}
+          />
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.fieldLabel}>{label}</Text>
@@ -75,7 +79,7 @@ function FieldCard({
         </View>
         {isFilled && (
           <View style={styles.filledBadge}>
-            <Text style={styles.filledBadgeText}>✓</Text>
+            <MaterialCommunityIcons name="check" size={14} color={Colors.success} />
           </View>
         )}
       </View>
@@ -109,7 +113,6 @@ export default function PersonalVaultScreen() {
   const [docFeedback, setDocFeedback] = useState<string>('');
   const [screenError, setScreenError] = useState<string>('');
   const [focusedField, setFocusedField] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
   const successAnim = useRef(new Animated.Value(0)).current;
 
@@ -223,13 +226,12 @@ export default function PersonalVaultScreen() {
     try {
       await savePersonalVaultData(normalized);
       setForm(normalized);
-      setSaveSuccess(true);
       showToast('Vault data saved successfully! 🔐', 'success');
       Animated.sequence([
         Animated.timing(successAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
         Animated.delay(1800),
         Animated.timing(successAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
-      ]).start(() => setSaveSuccess(false));
+      ]).start();
     } catch (e) {
       setScreenError(e instanceof Error ? e.message : t('vault.errorSave'));
     } finally {
@@ -264,7 +266,7 @@ export default function PersonalVaultScreen() {
       {/* Auto-Fill from Document Card */}
       <View style={styles.docAutoFillCard}>
         <View style={styles.docAutoFillHeader}>
-          <Text style={styles.docAutoFillIcon}>⚡</Text>
+          <MaterialCommunityIcons name="lightning-bolt" size={22} color={Colors.primaryLight} />
           <View style={{ flex: 1 }}>
             <Text style={styles.docAutoFillTitle}>{t('vault.uploadMyDoc')}</Text>
             <Text style={styles.docAutoFillSub}>
@@ -279,7 +281,10 @@ export default function PersonalVaultScreen() {
             onPress={handleUploadDocumentPdf}
             disabled={analyzingDoc}
           >
-            <Text style={styles.docUploadBtnText}>📁 Upload PDF</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <MaterialCommunityIcons name="file-upload" size={16} color={Colors.white} />
+              <Text style={styles.docUploadBtnText}>Upload PDF</Text>
+            </View>
           </Pressable>
 
           <Pressable
@@ -287,7 +292,10 @@ export default function PersonalVaultScreen() {
             onPress={handleUploadDocumentPhoto}
             disabled={analyzingDoc}
           >
-            <Text style={styles.docUploadBtnTextSecondary}>🖼️ Upload ID Photo</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <MaterialCommunityIcons name="image" size={16} color={Colors.textSecondary} />
+              <Text style={styles.docUploadBtnTextSecondary}>Upload ID Photo</Text>
+            </View>
           </Pressable>
         </View>
 
@@ -325,14 +333,20 @@ export default function PersonalVaultScreen() {
       {/* Error block */}
       {screenError ? (
         <View style={styles.errorBlock}>
-          <Text style={styles.errorText}>⚠️  {screenError}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <MaterialCommunityIcons name="alert" size={16} color={Colors.dangerLight} />
+            <Text style={styles.errorText}>{screenError}</Text>
+          </View>
         </View>
       ) : null}
 
       {/* Loading state */}
       {loading ? (
         <View style={styles.loadingBlock}>
-          <Text style={styles.loadingText}>⏳  {t('vault.loading')}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <ActivityIndicator size="small" color={Colors.textSecondary} />
+            <Text style={styles.loadingText}>{t('vault.loading')}</Text>
+          </View>
         </View>
       ) : null}
 
@@ -362,7 +376,10 @@ export default function PersonalVaultScreen() {
         ]}
         pointerEvents="none"
       >
-        <Text style={styles.successBannerText}>✅  Details saved successfully!</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+          <MaterialCommunityIcons name="check-circle" size={18} color={Colors.success} />
+          <Text style={styles.successBannerText}>Details saved successfully!</Text>
+        </View>
       </Animated.View>
 
       {/* Save button */}
@@ -372,9 +389,12 @@ export default function PersonalVaultScreen() {
         disabled={saving || loading}
         accessibilityRole="button"
       >
-        <Text style={styles.saveBtnText}>
-          {saving ? '⏳  ' + t('vault.saving') : '💾  ' + t('vault.save')}
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <MaterialCommunityIcons name={saving ? 'loading' : 'content-save'} size={20} color={Colors.white} />
+          <Text style={styles.saveBtnText}>
+            {saving ? t('vault.saving') : t('vault.save')}
+          </Text>
+        </View>
       </Pressable>
 
       {/* Reload button */}
@@ -391,7 +411,10 @@ export default function PersonalVaultScreen() {
 
       {/* Privacy note */}
       <View style={styles.privacyNote}>
-        <Text style={styles.privacyText}>🔒  Your data is stored only on this device. Never uploaded.</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+          <MaterialCommunityIcons name="lock" size={16} color={'#A5B4FC'} />
+          <Text style={styles.privacyText}>Your data is stored only on this device. Never uploaded.</Text>
+        </View>
       </View>
     </ScrollView>
   );
@@ -433,10 +456,7 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.sm,
   },
-  docAutoFillIcon: {
-    fontSize: 22,
-    lineHeight: 26,
-  },
+
   docAutoFillTitle: {
     fontSize: Typography.base,
     fontWeight: Typography.bold,
@@ -589,9 +609,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  fieldIcon: {
-    fontSize: 18,
-  },
+
   fieldLabel: {
     fontSize: Typography.base,
     fontWeight: Typography.bold,
@@ -612,11 +630,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  filledBadgeText: {
-    fontSize: 12,
-    color: Colors.success,
-    fontWeight: Typography.bold,
-  },
+
   input: {
     borderWidth: 1,
     borderColor: Colors.border,

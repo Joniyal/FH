@@ -7,6 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as DocumentPicker from 'expo-document-picker';
 import LargeActionButton from '../components/LargeActionButton';
@@ -32,10 +33,10 @@ type FeatureItem = {
 };
 
 const FEATURES: FeatureItem[] = [
-  { key: 'scan', icon: '📷', labelKey: 'home.scanLabel', subKey: 'home.scanSubLabel', route: 'ScanForm' },
-  { key: 'ocr', icon: '🧾', labelKey: 'home.ocrLabel', subKey: 'home.ocrSubLabel', route: 'OCRResult' },
-  { key: 'vault', icon: '🔐', labelKey: 'home.vaultLabel', subKey: 'home.vaultSubLabel', route: 'PersonalVault' },
-  { key: 'preview', icon: '✅', labelKey: 'home.previewLabel', subKey: 'home.previewSubLabel', route: 'FilledFormPreview' },
+  { key: 'scan', icon: 'camera', labelKey: 'home.scanLabel', subKey: 'home.scanSubLabel', route: 'ScanForm' },
+  { key: 'ocr', icon: 'text-recognition', labelKey: 'home.ocrLabel', subKey: 'home.ocrSubLabel', route: 'OCRResult' },
+  { key: 'vault', icon: 'shield-lock', labelKey: 'home.vaultLabel', subKey: 'home.vaultSubLabel', route: 'PersonalVault' },
+  { key: 'preview', icon: 'check-circle', labelKey: 'home.previewLabel', subKey: 'home.previewSubLabel', route: 'FilledFormPreview' },
 ];
 
 function formatTimeAgo(timestamp: number): string {
@@ -154,7 +155,10 @@ export default function HomeScreen({ navigation }: Props) {
             style={styles.guideBadgeBtn}
             onPress={() => setShowOnboarding(true)}
           >
-            <Text style={styles.guideBadgeText}>❓ Guide</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+              <MaterialCommunityIcons name="help-circle-outline" size={14} color={Colors.textWarm} />
+              <Text style={styles.guideBadgeText}>Guide</Text>
+            </View>
           </Pressable>
         </View>
       </Animated.View>
@@ -165,7 +169,7 @@ export default function HomeScreen({ navigation }: Props) {
           style={styles.quickActionBtn}
           onPress={() => navigation.navigate('ScanForm')}
         >
-          <Text style={styles.quickActionIcon}>📷</Text>
+          <MaterialCommunityIcons name="camera" size={22} color={Colors.textSecondary} />
           <Text style={styles.quickActionText}>Scan</Text>
         </Pressable>
 
@@ -173,7 +177,7 @@ export default function HomeScreen({ navigation }: Props) {
           style={[styles.quickActionBtn, styles.quickActionBtnPrimary]}
           onPress={handleQuickUploadPdf}
         >
-          <Text style={styles.quickActionIcon}>📂</Text>
+          <MaterialCommunityIcons name="file-document" size={22} color={Colors.primaryLight} />
           <Text style={[styles.quickActionText, styles.quickActionTextPrimary]}>PDF</Text>
         </Pressable>
 
@@ -181,7 +185,7 @@ export default function HomeScreen({ navigation }: Props) {
           style={styles.quickActionBtn}
           onPress={() => setShowTemplates(true)}
         >
-          <Text style={styles.quickActionIcon}>⚡</Text>
+          <MaterialCommunityIcons name="lightning-bolt" size={22} color={Colors.textSecondary} />
           <Text style={styles.quickActionText}>Templates</Text>
         </Pressable>
 
@@ -189,7 +193,7 @@ export default function HomeScreen({ navigation }: Props) {
           style={styles.quickActionBtn}
           onPress={() => navigation.navigate('PersonalVault')}
         >
-          <Text style={styles.quickActionIcon}>🪪</Text>
+          <MaterialCommunityIcons name="account" size={22} color={Colors.textSecondary} />
           <Text style={styles.quickActionText}>Vault</Text>
         </Pressable>
       </View>
@@ -205,7 +209,7 @@ export default function HomeScreen({ navigation }: Props) {
         ]}
       >
         <View style={styles.noticeRow}>
-          <Text style={styles.noticeIcon}>🔒</Text>
+          <MaterialCommunityIcons name="shield-check" size={22} color={Colors.accent} style={{ marginTop: 2 }} />
           <View style={styles.noticeTextBlock}>
             <Text style={styles.noticeTitle}>{t('home.noticeTitle')}</Text>
             <Text style={styles.noticeText}>{t('home.noticeText')}</Text>
@@ -227,9 +231,11 @@ export default function HomeScreen({ navigation }: Props) {
             return (
               <Pressable key={entry.id} style={styles.historyCard}>
                 <View style={styles.historyIconWrap}>
-                  <Text style={styles.historyIcon}>
-                    {entry.formType === 'scan' ? '📷' : entry.formType === 'upload' ? '📄' : '✍️'}
-                  </Text>
+                  <MaterialCommunityIcons
+                    name={entry.formType === 'scan' ? 'camera' : entry.formType === 'upload' ? 'file-document-outline' : 'pencil'}
+                    size={18}
+                    color={Colors.textSecondary}
+                  />
                 </View>
                 <View style={styles.historyMeta}>
                   <Text style={styles.historyTitle} numberOfLines={1}>
@@ -293,9 +299,9 @@ export default function HomeScreen({ navigation }: Props) {
         style={styles.historyLinkBtn}
         onPress={() => navigation.navigate('FormHistory')}
       >
-        <Text style={styles.historyLinkIcon}>📋</Text>
+        <MaterialCommunityIcons name="clipboard-text-clock" size={20} color={Colors.textSecondary} />
         <Text style={styles.historyLinkText}>View Form History</Text>
-        <Text style={styles.historyLinkArrow}>→</Text>
+        <MaterialCommunityIcons name="chevron-right" size={20} color={Colors.textMuted} />
       </Pressable>
 
       {/* Footer */}
@@ -414,14 +420,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primaryMuted,
     borderColor: Colors.borderAccent,
   },
-  quickActionIcon: {
-    fontSize: 22,
-  },
   quickActionText: {
     fontSize: Typography.xs,
     color: Colors.textSecondary,
     fontWeight: Typography.semibold,
     textAlign: 'center',
+    marginTop: 4,
   },
   quickActionTextPrimary: {
     color: Colors.primaryLight,
@@ -440,10 +444,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: Spacing.sm,
   },
-  noticeIcon: {
-    fontSize: 20,
-    lineHeight: 28,
-  },
+
   noticeTextBlock: {
     flex: 1,
   },
@@ -491,9 +492,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  historyIcon: {
-    fontSize: 18,
-  },
+
   historyMeta: {
     flex: 1,
   },
@@ -582,18 +581,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     marginTop: Spacing.sm,
   },
-  historyLinkIcon: {
-    fontSize: 20,
-  },
   historyLinkText: {
     flex: 1,
     fontSize: Typography.base,
     fontWeight: Typography.semibold,
     color: Colors.textSecondary,
-  },
-  historyLinkArrow: {
-    fontSize: Typography.lg,
-    color: Colors.textMuted,
   },
   footer: {
     textAlign: 'center',

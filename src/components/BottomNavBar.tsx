@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import Colors from '../theme/colors';
 import { Radius, Shadow, Spacing, Typography } from '../theme/tokens';
 
@@ -10,11 +11,11 @@ type BottomNavBarProps = {
   onNavigate: (tab: NavTab) => void;
 };
 
-const TABS: { key: NavTab; icon: string; label: string }[] = [
-  { key: 'Home', icon: '🏠', label: 'Home' },
-  { key: 'ScanForm', icon: '📷', label: 'Scan' },
-  { key: 'PersonalVault', icon: '🔐', label: 'Vault' },
-  { key: 'FormHistory', icon: '📋', label: 'History' },
+const TABS: { key: NavTab; icon: keyof typeof MaterialCommunityIcons.glyphMap; label: string }[] = [
+  { key: 'Home', icon: 'home', label: 'Home' },
+  { key: 'ScanForm', icon: 'camera', label: 'Scan' },
+  { key: 'PersonalVault', icon: 'shield-lock', label: 'Vault' },
+  { key: 'FormHistory', icon: 'clipboard-text-clock', label: 'History' },
 ];
 
 export default function BottomNavBar({ activeTab, onNavigate }: BottomNavBarProps) {
@@ -39,7 +40,7 @@ export default function BottomNavBar({ activeTab, onNavigate }: BottomNavBarProp
                 accessibilityLabel="Scan Form"
                 accessibilityState={{ selected: isActive }}
               >
-                <Text style={styles.centerScanIcon}>📷</Text>
+                <MaterialCommunityIcons name="camera" size={24} color={Colors.white} />
               </Pressable>
             );
           }
@@ -57,9 +58,11 @@ export default function BottomNavBar({ activeTab, onNavigate }: BottomNavBarProp
               accessibilityLabel={tab.label}
               accessibilityState={{ selected: isActive }}
             >
-              <Text style={[styles.tabIcon, isActive && styles.tabIconActive]}>
-                {tab.icon}
-              </Text>
+              <MaterialCommunityIcons
+                name={tab.icon}
+                size={22}
+                color={isActive ? Colors.primaryLight : Colors.textMuted}
+              />
               <Text style={[styles.tabLabel, isActive && styles.tabLabelActive]}>
                 {tab.label}
               </Text>
@@ -103,13 +106,6 @@ const styles = StyleSheet.create({
   tabBtnActive: {
     backgroundColor: 'rgba(232, 145, 58, 0.14)',
   },
-  tabIcon: {
-    fontSize: 20,
-    opacity: 0.7,
-  },
-  tabIconActive: {
-    opacity: 1,
-  },
   tabLabel: {
     fontSize: Typography.xs - 1,
     color: Colors.textMuted,
@@ -121,21 +117,18 @@ const styles = StyleSheet.create({
     fontWeight: Typography.bold,
   },
   centerScanBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: -16,
+    marginTop: -20,
     ...Shadow.glow,
     borderWidth: 3,
     borderColor: Colors.bgCard,
   },
   centerScanBtnActive: {
     backgroundColor: Colors.primaryLight,
-  },
-  centerScanIcon: {
-    fontSize: 22,
   },
 });
